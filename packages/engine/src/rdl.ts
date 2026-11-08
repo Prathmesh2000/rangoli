@@ -383,8 +383,9 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
     if (where.pos === 'start') return { parent: defaultParent, index: 0 };
     if (where.pos === 'end') return { parent: defaultParent, index: undefined };
     if (where.pos === 'index') return { parent: defaultParent, index: where.index };
-    const ref = page.nodes[where.ref];
-    if (!ref) { errors.push({ line, severity: 'error', message: `#${where.ref} not found` }); return undefined; }
+    const refId = (where as Extract<Where, { ref: string }>).ref;
+    const ref = page.nodes[refId];
+    if (!ref) { errors.push({ line, severity: 'error', message: `#${refId} not found` }); return undefined; }
     const siblings = ref.parent ? page.nodes[ref.parent]!.children ?? [] : page.children;
     const i = siblings.indexOf(ref.id);
     return { parent: ref.parent, index: where.pos === 'before' ? i : i + 1 };

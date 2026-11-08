@@ -215,13 +215,16 @@ export function defaultTokens(opts: DefaultTokenOptions = {}): TokenTree {
         secondary: sem('color.neutral.600', 'color.neutral.300'),
         muted: leaf(ref('color.text.secondary'), 'color'),
         disabled: sem('color.neutral.400', 'color.neutral.500'),
-        onPrimary: leaf(ref('color.white'), 'color'),
+        onPrimary: leaf(ref('color.white'), 'color', { dark: ref('color.primary.950') }),
+        onDanger: leaf(ref('color.white'), 'color', { dark: ref('color.error.950') }),
         link: sem('color.primary.700', 'color.primary.300'),
       },
       action: {
         primary: sem('color.primary.600', 'color.primary.400'),
         primaryHover: sem('color.primary.700', 'color.primary.300'),
         secondaryHover: sem('color.neutral.100', 'color.neutral.800'),
+        danger: sem('color.error.600', 'color.error.400'),
+        dangerHover: sem('color.error.700', 'color.error.300'),
       },
       status: {
         success: { fg: sem('color.success.700', 'color.success.300'), bg: sem('color.success.50', 'color.success.900') },

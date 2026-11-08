@@ -52,7 +52,10 @@ describe('tokens', () => {
         expect(contrastRatio(r.resolve(t, mode) as string, bg)).toBeGreaterThanOrEqual(4.5);
       }
       const onPrimary = r.resolve('color.text.onPrimary', mode) as string;
-      if (mode === 'light') expect(contrastRatio(onPrimary, r.resolve('color.action.primary', mode) as string)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(onPrimary, r.resolve('color.action.primary', mode) as string)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(onPrimary, r.resolve('color.action.primaryHover', mode) as string)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(r.resolve('color.text.onDanger', mode) as string, r.resolve('color.action.danger', mode) as string)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(r.resolve('color.text.link', mode) as string, bg)).toBeGreaterThanOrEqual(4.5);
       for (const s of ['success', 'warning', 'error', 'info']) {
         expect(contrastRatio(r.resolve(`color.status.${s}.fg`, mode) as string, r.resolve(`color.status.${s}.bg`, mode) as string)).toBeGreaterThanOrEqual(4.5);
       }

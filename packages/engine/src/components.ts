@@ -28,7 +28,7 @@ export function defaultComponents(): Record<string, ComponentDef> {
       { when: { variant: 'primary' }, style: { fill: [t('color.action.primary')], color: t('color.text.onPrimary') } },
       { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], color: t('color.text.primary'), stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' } } },
       { when: { variant: 'ghost' }, style: { fill: [], color: t('color.text.primary') } },
-      { when: { variant: 'danger' }, style: { fill: [t('color.error.600')], color: t('color.text.onPrimary') } },
+      { when: { variant: 'danger' }, style: { fill: [t('color.action.danger')], color: t('color.text.onDanger') } },
     ],
   };
   const chip: ComponentDef = {
