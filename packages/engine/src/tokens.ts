@@ -212,7 +212,8 @@ export function defaultTokens(opts: DefaultTokenOptions = {}): TokenTree {
       },
       text: {
         primary: sem('color.neutral.900', 'color.neutral.50'),
-        secondary: sem('color.neutral.600', 'color.neutral.300'),
+        // 700 (not 600) so secondary text also passes AA on bg.subtle (table headers, wells)
+        secondary: sem('color.neutral.700', 'color.neutral.300'),
         muted: leaf(ref('color.text.secondary'), 'color'),
         disabled: sem('color.neutral.400', 'color.neutral.500'),
         onPrimary: leaf(ref('color.white'), 'color', { dark: ref('color.primary.950') }),

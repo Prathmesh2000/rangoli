@@ -1,0 +1,42 @@
+Runs col gap6 p6 w1040 fill:canvas
+  Header row between center
+    Heading col gap1
+      Text headline "Test runs"
+      Text body-sm muted "Nightly and on-demand runs across all suites"
+    Actions row gap2 center
+      @Button variant=secondary size=sm "Export"
+      @Button variant=primary size=sm "New run"
+  Filters row gap2 center
+    @Input size=sm "Search runs"
+    @Chip variant=neutral "All suites"
+    @Chip variant=neutral "Last 7 days"
+  Table col fill:surface stroke:border r3 clip
+    HeaderRow row px4 py2 gap4 fill:subtle
+      Text label muted wfill "Run"
+      Text label muted w120 "Status"
+      Text label muted w96 "Duration"
+      Text label muted w120 "Started"
+    Row1 row px4 py3 gap4 center
+      Cell col gap0.5 wfill
+        Text body "Checkout flow"
+        Text caption muted mono "RUN-2481 · 142 tests"
+      Status1 row w120
+        @Chip variant=success "Passed"
+      Text body mono w96 "04:12"
+      Text body-sm muted w120 "2 hours ago"
+    Row2 row px4 py3 gap4 center
+      Cell col gap0.5 wfill
+        Text body "Login smoke test"
+        Text caption muted mono "RUN-2480 · 24 tests"
+      Status2 row w120
+        @Chip variant=error "3 failed"
+      Text body mono w96 "00:58"
+      Text body-sm muted w120 "3 hours ago"
+    Row3 row px4 py3 gap4 center
+      Cell col gap0.5 wfill
+        Text body "Payments regression"
+        Text caption muted mono "RUN-2479 · 318 tests"
+      Status3 row w120
+        @Chip variant=warning "Flaky"
+      Text body mono w96 "11:40"
+      Text body-sm muted w120 "Yesterday"

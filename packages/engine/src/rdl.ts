@@ -263,6 +263,7 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     }
     if ((m = /^opacity:(\d*\.?\d+)$/.exec(f))) { style().opacity = parseFloat(m[1]!); continue; }
     if ((m = /^role:(.+)$/.exec(f))) { node.role = m[1]; continue; }
+    if ((m = /^name:(.+)$/.exec(f))) { node.name = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!; continue; }
     if ((m = /^at:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(f))) { node.position = { x: parseFloat(m[1]!), y: parseFloat(m[2]!) }; continue; }
     if ((m = /^align:(left|center|right)$/.exec(f))) { style().textAlign = m[1] as 'left'; continue; }
     if (f === 'muted') { style().color = { token: ctx.tokens.find('text.muted', 'color') ?? 'color.text.muted' }; continue; }
@@ -291,9 +292,13 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if (node.type === 'instance') {
       const prop = comp?.labelProp ?? 'label';
       (node.props ??= {})[prop] = text;
+    } else if ((node.type === 'frame' || node.type === 'group') && (node.children?.length || hasChildren)) {
+      diag.push({ line, severity: 'error', message: `"${node.name}" is a container with children — quoted text only applies to text nodes and components. Target the text node inside it.` });
+    } else if (node.type === 'vector' || node.type === 'image') {
+      diag.push({ line, severity: 'error', message: `${node.type} "${node.name}" cannot hold text` });
     } else {
       node.text = text;
-      if (node.type === 'frame' && !node.children?.length && !hasChildren) node.type = 'text';
+      if (node.type === 'frame') node.type = 'text';
     }
   }
   if (node.type === 'text') { delete node.layout; }
@@ -432,8 +437,17 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         // allow the replacement to reuse the same id
         const reuse = cmd.nodes.length === 1 && !cmd.nodes[0]!.head.includes('#');
         if (reuse) cmd.nodes[0]!.head += `#${cmd.id}`;
-        delete page.nodes[cmd.id]; // temporarily hide for exists() check
-        try { emitTree(cmd.nodes, target.parent, index); } finally { page.nodes[cmd.id] = target; }
+        // temporarily hide the whole old subtree so the replacement may reuse its ids
+        const hidden: [string, RNode][] = [];
+        const hide = (id: string) => {
+          const n = page.nodes[id];
+          if (!n) return;
+          hidden.push([id, n]);
+          delete page.nodes[id];
+          for (const c of n.children ?? []) hide(c);
+        };
+        hide(cmd.id);
+        try { emitTree(cmd.nodes, target.parent, index); } finally { for (const [id, n] of hidden) page.nodes[id] = n; }
         break;
       }
       case 'move': {
@@ -531,17 +545,25 @@ function paintStr(p: Paint, tokens: TokenResolver): string {
 
 export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument): string {
   const parts: string[] = [];
+  // names that can't be a bare head token are written as a generic head + name:"…"
+  const safeName = /^[^\s#"@][^\s#"]*$/.test(n.name);
+  const generic = { frame: 'Frame', text: 'Text', vector: 'Vector', image: 'Image', group: 'Group', instance: 'Instance' }[n.type];
+  const headName = safeName ? n.name : generic;
+  if (!safeName) parts.push(''); // placeholder, filled below
   if (n.type === 'instance' && n.component) {
-    parts.push(n.name === n.component ? `@${n.component}#${n.id}` : `${n.name}#${n.id} @${n.component}`);
+    parts.length = 0;
+    parts.push(n.name === n.component ? `@${n.component}#${n.id}` : `${headName}#${n.id} @${n.component}`);
   } else {
-    parts.push(`${n.name}#${n.id}`);
-    const inferredText = /^(Text|Label|Title|Heading|Caption)\b/.test(n.name);
+    parts.length = 0;
+    parts.push(`${headName}#${n.id}`);
+    const inferredText = /^(Text|Label|Title|Heading|Caption)\b/.test(headName);
     if (n.type === 'text' && !inferredText) parts.push('text');
-    if (n.type === 'vector' && !/^(Icon|Vector)\b/.test(n.name)) parts.push('vector');
-    if (n.type === 'image' && !/^(Image|Img|Avatar)\b/.test(n.name)) parts.push('image');
+    if (n.type === 'vector' && !/^(Icon|Vector)\b/.test(headName)) parts.push('vector');
+    if (n.type === 'image' && !/^(Image|Img|Avatar)\b/.test(headName)) parts.push('image');
     if (n.type === 'group') parts.push('group');
     if (n.type === 'frame' && inferredText) parts.push('frame');
   }
+  if (!safeName) parts.push(`name:${JSON.stringify(n.name)}`);
   const l = n.layout;
   if (l && n.type !== 'text') {
     if (l.mode === 'grid' && typeof l.columns === 'number') parts.push(`cols${l.columns}`);

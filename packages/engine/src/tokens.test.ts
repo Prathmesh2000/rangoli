@@ -51,6 +51,10 @@ describe('tokens', () => {
       for (const t of ['color.text.primary', 'color.text.secondary']) {
         expect(contrastRatio(r.resolve(t, mode) as string, bg)).toBeGreaterThanOrEqual(4.5);
       }
+      // secondary text must also work on every non-selected background it commonly sits on
+      for (const surf of ['color.bg.subtle', 'color.bg.canvas']) {
+        expect(contrastRatio(r.resolve('color.text.secondary', mode) as string, r.resolve(surf, mode) as string)).toBeGreaterThanOrEqual(4.5);
+      }
       const onPrimary = r.resolve('color.text.onPrimary', mode) as string;
       expect(contrastRatio(onPrimary, r.resolve('color.action.primary', mode) as string)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(onPrimary, r.resolve('color.action.primaryHover', mode) as string)).toBeGreaterThanOrEqual(4.5);

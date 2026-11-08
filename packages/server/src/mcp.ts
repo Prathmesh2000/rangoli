@@ -80,6 +80,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
           `Components: ${Object.values(d.components).map((c) => `@${c.name}(${Object.entries(c.axes).map(([k, v]) => `${k}:${v.join('|')}`).join(', ')})`).join(' ')}`,
           `Token groups: ${groups}`,
           opts.previewUrl ? `Live preview: ${opts.previewUrl}` : '',
+          opts.previewUrl ? `Editor (for the human): ${opts.previewUrl}editor/` : '',
           `History: ${doc.historyEntries.length} changes`,
         ].filter(Boolean).join('\n'),
       );

@@ -1,0 +1,10 @@
+{
+  "format": "rangoli@1",
+  "name": "Test Management",
+  "pages": [
+    {
+      "id": "p1",
+      "name": "Page 1"
+    }
+  ]
+}

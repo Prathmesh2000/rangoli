@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createDocument, loadDocument, saveDocument, type ChangeEntry, type DefaultTokenOptions, type RangoliDocument } from '@rangoli/engine';
+import { createDocument, type ChangeEntry, type DefaultTokenOptions, type RangoliDocument } from '@rangoli/engine';
+import { loadDocument, saveDocument } from '@rangoli/engine/io';
 
 export interface SessionEvents {
   change: [ChangeEntry];
   saved: [];
+  selection: [string[]];
 }
 
 /**
@@ -15,6 +17,11 @@ export class Session extends EventEmitter<SessionEvents> {
   private saveTimer: NodeJS.Timeout | undefined;
   private saving: Promise<void> = Promise.resolve();
   selection: string[] = [];
+
+  setSelection(ids: string[]): void {
+    this.selection = ids;
+    this.emit('selection', ids);
+  }
 
   private constructor(readonly dir: string, readonly doc: RangoliDocument) {
     super();

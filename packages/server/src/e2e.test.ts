@@ -84,9 +84,24 @@ Runs col gap6 p6 w960 fill:canvas
     expect(html).toContain('data-rid="n1"');
 
     // human selects a node in the browser → agent sees it
-    await fetch(previewUrl + 'select', { method: 'POST', body: JSON.stringify({ ids: ['n9'] }) });
+    const jsonHeaders = { 'content-type': 'application/json' };
+    await fetch(previewUrl + 'select', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ids: ['n9'] }) });
     const selection = await call('selection_get');
     expect(selection.text).toContain('#n9');
+
+    // security: cross-site and non-JSON writes are rejected
+    const evil = await fetch(previewUrl + 'api/rdl', { method: 'POST', headers: { ...jsonHeaders, origin: 'https://evil.example' }, body: JSON.stringify({ script: 'delete #n1' }) });
+    expect(evil.status).toBe(403);
+    const simple = await fetch(previewUrl + 'api/rdl', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ script: 'delete #n1' }) });
+    expect(simple.status).toBe(403);
+
+    // human edit through the editor API shares history with the agent
+    const human = await fetch(previewUrl + 'api/rdl', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ script: 'set #n3 "Test runs (human)"', label: 'rename' }) });
+    expect(human.status).toBe(200);
+    const docRes = (await (await fetch(previewUrl + 'api/doc')).json()) as { data: { pages: Record<string, { nodes: Record<string, { text?: string }> }> }; history: { author: string }[] };
+    expect(docRes.data.pages.p1!.nodes.n3!.text).toBe('Test runs (human)');
+    expect(docRes.history.at(-1)!.author).toBe('human');
+    await fetch(previewUrl + 'api/undo', { method: 'POST', headers: jsonHeaders, body: '{}' });
 
     // undo / history
     const hist = await call('history');

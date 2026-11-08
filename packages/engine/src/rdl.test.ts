@@ -63,6 +63,12 @@ describe('RDL create + serialize', () => {
     expect(() => applyRdl(doc, '@Button variant=fancy "x"')).toThrow(/variant must be one of: primary, secondary, ghost, danger/);
   });
 
+  it('rejects text on a container instead of silently ignoring it', () => {
+    const doc = createDocument();
+    applyRdl(doc, CARD);
+    expect(() => applyRdl(doc, 'set #n2 "oops"')).toThrow(/container with children/);
+  });
+
   it('allows raw px with explicit unit (for linter to flag later)', () => {
     const doc = createDocument();
     applyRdl(doc, 'Box p13px gap5px');
@@ -99,6 +105,34 @@ describe('RDL edit commands', () => {
     // whole batch is one undoable change each
     doc.undo();
     expect(doc.findNode('n7')).toBeDefined();
+  });
+
+  it('replace can reuse the ids of the whole subtree (editor RDL tab round-trip)', () => {
+    const doc = createDocument();
+    applyRdl(doc, CARD);
+    const sub = serializeRdl(doc, { roots: ['n2'] });
+    const edited = sub.replace('"Login smoke test"', '"Checkout flow"');
+    applyRdl(doc, `replace #n2\n${edited.split('\n').map((l) => '  ' + l).join('\n')}`);
+    expect(doc.node('n3').text).toBe('Checkout flow');
+    expect(doc.node('n2').children).toEqual(['n3', 'n4']);
+    expect(doc.node('n1').children![0]).toBe('n2');
+  });
+
+  it('renames with name:', () => {
+    const doc = createDocument();
+    applyRdl(doc, CARD);
+    applyRdl(doc, 'set #n2 name:"Card header"');
+    expect(doc.node('n2').name).toBe('Card header');
+    applyRdl(doc, 'set #n3 name:"Title text"');
+    // names with spaces survive a serialize → parse round trip
+    const out = serializeRdl(doc);
+    expect(out).toContain('Frame#n2 name:"Card header" row between center');
+    expect(out).toContain('Text#n3 name:"Title text" title-sm "Login smoke test"');
+    const doc2 = createDocument();
+    applyRdl(doc2, out);
+    expect(doc2.node('n2').name).toBe('Card header');
+    expect(doc2.node('n3')).toMatchObject({ name: 'Title text', type: 'text' });
+    expect(serializeRdl(doc2)).toBe(out);
   });
 
   it('set only patches changed fields', () => {

@@ -8,8 +8,8 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Engine (model, atomic ops + undo, RDL, OKLCH tokens + contrast, HTML/CSS renderer, linter, file format) + MCP server + live preview + CLI | ✅ done, 35 tests |
-| 1 | Visual editor (canvas, layers, inspector, palette view, components) | next |
+| 0 | Engine (model, atomic ops + undo, RDL, OKLCH tokens + contrast, HTML/CSS renderer, linter, file format) + MCP server + live preview + CLI | ✅ done |
+| 1 | Visual editor: canvas (shadow DOM, exact CSS), layers, inspector (Design/RDL/CSS), tokens & palette, lint with one-click fixes, activity feed, live sync with agents, shared undo, copy/paste as RDL | ✅ done |
 | 2 | Motion tokens, state transitions, enter/exit, motion lint | |
 | 3 | Collaboration & review (rooms, roles, change sets, comments, diff) | |
 | 4 | Timeline, smart/layout animate, prototype + exports | |
@@ -23,7 +23,9 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 npm install
 npm run build
 node packages/server/dist/cli.js init ./designs/app.rangoli --name "My App" --brand "#2a6fb0"
-node packages/server/dist/cli.js serve ./designs/app.rangoli      # live preview at http://127.0.0.1:4400
+node packages/server/dist/cli.js serve ./designs/app.rangoli
+# editor:  http://127.0.0.1:4400/editor/
+# preview: http://127.0.0.1:4400/
 ```
 
 ### Connect Claude Code
@@ -56,6 +58,12 @@ move #n6 before #n2
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
 
+## Editor
+
+Every human edit is sent as RDL to the same server the agent uses — one history, one undo stack, live on both sides. The canvas renders with the same engine and CSS as export.
+
+Shortcuts: Delete · Ctrl+Z / Ctrl+Shift+Z · Ctrl+D duplicate · Ctrl+C copies selection as RDL (paste into your agent chat) · Ctrl+V pastes RDL · Enter / Shift+Enter select child / parent · Alt+↑/↓ reorder · Esc deselect · Ctrl+wheel zoom · Shift+1 fit
+
 ## Performance (4,001-node document)
 
 | | budget | measured |
@@ -69,6 +77,9 @@ Every `rdl_apply` returns lint issues for the affected screen, with ready-to-app
 
 ```
 packages/engine   headless TypeScript engine (no deps)
-packages/server   CLI · MCP server · live preview
+packages/server   CLI · MCP server · live preview · editor API
+packages/editor   visual editor (React, 62 KB gzipped)
+scripts/          editor-shots.mjs — visual smoke test in system Edge
+examples/         demo document + test-runs.rdl
 docs/SPEC.md      specification
 ```

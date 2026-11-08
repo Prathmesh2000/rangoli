@@ -1,0 +1,834 @@
+{
+  "id": "p1",
+  "name": "Page 1",
+  "children": [
+    "n1"
+  ],
+  "nodes": {
+    "n1": {
+      "id": "n1",
+      "type": "frame",
+      "name": "Runs",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.6"
+        },
+        "padding": [
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          }
+        ]
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 1040
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.canvas"
+          }
+        ]
+      },
+      "children": [
+        "n2",
+        "n9",
+        "nd"
+      ]
+    },
+    "n2": {
+      "id": "n2",
+      "type": "frame",
+      "name": "Header",
+      "layout": {
+        "mode": "row",
+        "justify": "between",
+        "align": "center"
+      },
+      "parent": "n1",
+      "children": [
+        "n3",
+        "n6"
+      ]
+    },
+    "n3": {
+      "id": "n3",
+      "type": "frame",
+      "name": "Heading",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.1"
+        }
+      },
+      "parent": "n2",
+      "children": [
+        "n4",
+        "n5"
+      ]
+    },
+    "n4": {
+      "id": "n4",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.headline"
+        }
+      },
+      "text": "Test runs",
+      "parent": "n3"
+    },
+    "n5": {
+      "id": "n5",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body-sm"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "text": "Nightly and on-demand runs across all suites",
+      "parent": "n3"
+    },
+    "n6": {
+      "id": "n6",
+      "type": "frame",
+      "name": "Actions",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.2"
+        },
+        "align": "center"
+      },
+      "parent": "n2",
+      "children": [
+        "n7",
+        "n8"
+      ]
+    },
+    "n7": {
+      "id": "n7",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "secondary",
+        "size": "sm"
+      },
+      "props": {
+        "label": "Export"
+      },
+      "parent": "n6",
+      "children": []
+    },
+    "n8": {
+      "id": "n8",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "primary",
+        "size": "sm"
+      },
+      "props": {
+        "label": "New run"
+      },
+      "parent": "n6",
+      "children": []
+    },
+    "n9": {
+      "id": "n9",
+      "type": "frame",
+      "name": "Filters",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.2"
+        },
+        "align": "center"
+      },
+      "parent": "n1",
+      "children": [
+        "na",
+        "nb",
+        "nc"
+      ]
+    },
+    "na": {
+      "id": "na",
+      "type": "instance",
+      "name": "Input",
+      "component": "Input",
+      "variant": {
+        "size": "sm"
+      },
+      "props": {
+        "placeholder": "Search runs"
+      },
+      "parent": "n9",
+      "children": []
+    },
+    "nb": {
+      "id": "nb",
+      "type": "instance",
+      "name": "Chip",
+      "component": "Chip",
+      "variant": {
+        "variant": "neutral"
+      },
+      "props": {
+        "label": "All suites"
+      },
+      "parent": "n9",
+      "children": []
+    },
+    "nc": {
+      "id": "nc",
+      "type": "instance",
+      "name": "Chip",
+      "component": "Chip",
+      "variant": {
+        "variant": "neutral"
+      },
+      "props": {
+        "label": "Last 7 days"
+      },
+      "parent": "n9",
+      "children": []
+    },
+    "nd": {
+      "id": "nd",
+      "type": "frame",
+      "name": "Table",
+      "layout": {
+        "mode": "col"
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.surface"
+          }
+        ],
+        "stroke": {
+          "paint": {
+            "token": "color.border.default"
+          },
+          "width": 1,
+          "align": "inside"
+        },
+        "radius": {
+          "token": "radius.3"
+        },
+        "clip": true
+      },
+      "parent": "n1",
+      "children": [
+        "ne",
+        "nj",
+        "nr",
+        "nz"
+      ]
+    },
+    "ne": {
+      "id": "ne",
+      "type": "frame",
+      "name": "HeaderRow",
+      "layout": {
+        "mode": "row",
+        "padding": [
+          {
+            "token": "space.2"
+          },
+          {
+            "token": "space.4"
+          },
+          {
+            "token": "space.2"
+          },
+          {
+            "token": "space.4"
+          }
+        ],
+        "gap": {
+          "token": "space.4"
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.subtle"
+          }
+        ]
+      },
+      "parent": "nd",
+      "children": [
+        "nf",
+        "ng",
+        "nh",
+        "ni"
+      ]
+    },
+    "nf": {
+      "id": "nf",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "text": "Run",
+      "parent": "ne"
+    },
+    "ng": {
+      "id": "ng",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "text": "Status",
+      "parent": "ne"
+    },
+    "nh": {
+      "id": "nh",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 96
+        }
+      },
+      "text": "Duration",
+      "parent": "ne"
+    },
+    "ni": {
+      "id": "ni",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "text": "Started",
+      "parent": "ne"
+    },
+    "nj": {
+      "id": "nj",
+      "type": "frame",
+      "name": "Row1",
+      "layout": {
+        "mode": "row",
+        "padding": [
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          },
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          }
+        ],
+        "gap": {
+          "token": "space.4"
+        },
+        "align": "center"
+      },
+      "parent": "nd",
+      "children": [
+        "nk",
+        "nn",
+        "np",
+        "nq"
+      ]
+    },
+    "nk": {
+      "id": "nk",
+      "type": "frame",
+      "name": "Cell",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.0.5"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "parent": "nj",
+      "children": [
+        "nl",
+        "nm"
+      ]
+    },
+    "nl": {
+      "id": "nl",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        }
+      },
+      "text": "Checkout flow",
+      "parent": "nk"
+    },
+    "nm": {
+      "id": "nm",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.caption"
+        },
+        "color": {
+          "token": "color.text.muted"
+        },
+        "mono": true
+      },
+      "text": "RUN-2481 · 142 tests",
+      "parent": "nk"
+    },
+    "nn": {
+      "id": "nn",
+      "type": "frame",
+      "name": "Status1",
+      "layout": {
+        "mode": "row"
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "parent": "nj",
+      "children": [
+        "no"
+      ]
+    },
+    "no": {
+      "id": "no",
+      "type": "instance",
+      "name": "Chip",
+      "component": "Chip",
+      "variant": {
+        "variant": "success"
+      },
+      "props": {
+        "label": "Passed"
+      },
+      "parent": "nn",
+      "children": []
+    },
+    "np": {
+      "id": "np",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        },
+        "mono": true
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 96
+        }
+      },
+      "text": "04:12",
+      "parent": "nj"
+    },
+    "nq": {
+      "id": "nq",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body-sm"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "text": "2 hours ago",
+      "parent": "nj"
+    },
+    "nr": {
+      "id": "nr",
+      "type": "frame",
+      "name": "Row2",
+      "layout": {
+        "mode": "row",
+        "padding": [
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          },
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          }
+        ],
+        "gap": {
+          "token": "space.4"
+        },
+        "align": "center"
+      },
+      "parent": "nd",
+      "children": [
+        "ns",
+        "nv",
+        "nx",
+        "ny"
+      ]
+    },
+    "ns": {
+      "id": "ns",
+      "type": "frame",
+      "name": "Cell",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.0.5"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "parent": "nr",
+      "children": [
+        "nt",
+        "nu"
+      ]
+    },
+    "nt": {
+      "id": "nt",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        }
+      },
+      "text": "Login smoke test",
+      "parent": "ns"
+    },
+    "nu": {
+      "id": "nu",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.caption"
+        },
+        "color": {
+          "token": "color.text.muted"
+        },
+        "mono": true
+      },
+      "text": "RUN-2480 · 24 tests",
+      "parent": "ns"
+    },
+    "nv": {
+      "id": "nv",
+      "type": "frame",
+      "name": "Status2",
+      "layout": {
+        "mode": "row"
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "parent": "nr",
+      "children": [
+        "nw"
+      ]
+    },
+    "nw": {
+      "id": "nw",
+      "type": "instance",
+      "name": "Chip",
+      "component": "Chip",
+      "variant": {
+        "variant": "error"
+      },
+      "props": {
+        "label": "3 failed"
+      },
+      "parent": "nv",
+      "children": []
+    },
+    "nx": {
+      "id": "nx",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        },
+        "mono": true
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 96
+        }
+      },
+      "text": "00:58",
+      "parent": "nr"
+    },
+    "ny": {
+      "id": "ny",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body-sm"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "text": "3 hours ago",
+      "parent": "nr"
+    },
+    "nz": {
+      "id": "nz",
+      "type": "frame",
+      "name": "Row3",
+      "layout": {
+        "mode": "row",
+        "padding": [
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          },
+          {
+            "token": "space.3"
+          },
+          {
+            "token": "space.4"
+          }
+        ],
+        "gap": {
+          "token": "space.4"
+        },
+        "align": "center"
+      },
+      "parent": "nd",
+      "children": [
+        "n10",
+        "n13",
+        "n15",
+        "n16"
+      ]
+    },
+    "n10": {
+      "id": "n10",
+      "type": "frame",
+      "name": "Cell",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.0.5"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "parent": "nz",
+      "children": [
+        "n11",
+        "n12"
+      ]
+    },
+    "n11": {
+      "id": "n11",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        }
+      },
+      "text": "Payments regression",
+      "parent": "n10"
+    },
+    "n12": {
+      "id": "n12",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.caption"
+        },
+        "color": {
+          "token": "color.text.muted"
+        },
+        "mono": true
+      },
+      "text": "RUN-2479 · 318 tests",
+      "parent": "n10"
+    },
+    "n13": {
+      "id": "n13",
+      "type": "frame",
+      "name": "Status3",
+      "layout": {
+        "mode": "row"
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "parent": "nz",
+      "children": [
+        "n14"
+      ]
+    },
+    "n14": {
+      "id": "n14",
+      "type": "instance",
+      "name": "Chip",
+      "component": "Chip",
+      "variant": {
+        "variant": "warning"
+      },
+      "props": {
+        "label": "Flaky"
+      },
+      "parent": "n13",
+      "children": []
+    },
+    "n15": {
+      "id": "n15",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        },
+        "mono": true
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 96
+        }
+      },
+      "text": "11:40",
+      "parent": "nz"
+    },
+    "n16": {
+      "id": "n16",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body-sm"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 120
+        }
+      },
+      "text": "Yesterday",
+      "parent": "nz"
+    }
+  }
+}
