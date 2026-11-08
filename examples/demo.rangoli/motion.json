@@ -127,44 +127,5 @@
         "easing": "out"
       }
     ]
-  },
-  "#nd": {
-    "target": "#nd",
-    "specs": [
-      {
-        "trigger": "enter",
-        "tracks": [
-          {
-            "prop": "opacity",
-            "from": "0"
-          },
-          {
-            "prop": "scale",
-            "from": "popIn"
-          },
-          {
-            "prop": "y",
-            "from": "md"
-          }
-        ],
-        "duration": "base",
-        "easing": "out"
-      },
-      {
-        "trigger": "exit",
-        "tracks": [
-          {
-            "prop": "opacity",
-            "to": "0"
-          },
-          {
-            "prop": "scale",
-            "to": "popIn"
-          }
-        ],
-        "duration": "fast",
-        "easing": "in"
-      }
-    ]
   }
 }

@@ -7,7 +7,10 @@ import {
   compileRdl,
   contrastRatio,
   defaultTokens,
+  diffDocuments,
+  formatDiff,
   formatLint,
+  previewScript,
   generateCategorical,
   generateNeutralRamp,
   generateRamp,
@@ -66,6 +69,26 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
 
   const pageArg = z.string().optional().describe('page id (default: first page)');
 
+  /** Validate on a copy, store as a pending change set, report lint of the would-be result. */
+  const suggest = (script: string, label: string, parent?: string, page?: string): string => {
+    const p = previewScript(doc, script, { parent, page });
+    if (p.error) throw new Error(p.error);
+    const cs = session.addChangeset({ author, label, script });
+    const nodeIds = p.touched.filter((t) => !t.startsWith('$') && p.doc.findNode(t));
+    const roots = new Set<string>();
+    for (const id of nodeIds) {
+      let n = p.doc.findNode(id)?.node;
+      while (n?.parent) n = p.doc.findNode(n.parent)?.node;
+      if (n) roots.add(n.id);
+    }
+    const issues = roots.size ? lint(p.doc, { page, roots: [...roots] }).filter((i) => i.severity !== 'P3') : [];
+    return [
+      `Saved as suggestion ${cs.id} — NOT applied. A human accepts or rejects it in the editor (Review tab).`,
+      `Diff:\n${formatDiff(doc.data, p.doc.data, diffDocuments(doc.data, p.doc.data, page), page)}`,
+      issues.length ? `Lint of the suggested result:\n${formatLint(issues)}` : 'Lint of the suggested result: clean (P0–P2).',
+    ].join('\n');
+  };
+
   server.registerTool(
     'rdl_help',
     { description: 'Full RDL language reference and lint code list. Call once if unsure about syntax.', inputSchema: {} },
@@ -88,6 +111,8 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
           opts.previewUrl ? `Live preview: ${opts.previewUrl}` : '',
           opts.previewUrl ? `Editor (for the human): ${opts.previewUrl}editor/` : '',
           `History: ${doc.historyEntries.length} changes`,
+          `Agent mode: ${session.agentMode}${session.agentMode === 'suggest' ? ' — rdl_apply creates suggestions for human approval' : ''}`,
+          `Review: ${session.reviews.threads.filter((t) => !t.resolved).length} open threads, ${session.reviews.changesets.filter((c) => c.status === 'pending').length} pending suggestions, ${session.agentInbox().length} waiting for you (see inbox)`,
         ].filter(Boolean).join('\n'),
       );
     }),
@@ -172,6 +197,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
       },
     },
     safe(({ script, parent, page, label }) => {
+      if (session.agentMode === 'suggest') return text(suggest(script, label ?? 'agent suggestion', parent, page));
       const res = applyRdl(doc, script, { parent, page, author, label });
       // map touched entries to nodes: plain ids, and motion on "#id" targets
       const nodeIds = res.touched.flatMap((t) => (!t.startsWith('$') ? [t] : t.startsWith('$motion:#') ? [t.slice(9).replace(/\[.*$/, '')] : []));
@@ -437,6 +463,139 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
       const issues = lint(doc).filter((i) => i.code.startsWith('M'));
       return text(`Applied ${preset} to ${target}.\n${issues.length ? formatLint(issues) : 'Motion lint: clean.'}`);
     }),
+  );
+
+  // ---------------------------------------------------------------- review & collaboration
+  server.registerTool(
+    'suggest',
+    {
+      description: 'Propose an RDL change WITHOUT applying it. It becomes a pending suggestion a human accepts/rejects in the editor. Use for anything subjective or large. (When the owner sets agent mode to "suggest", rdl_apply does this automatically.)',
+      inputSchema: { script: z.string(), label: z.string().describe('one-line description for the reviewer'), parent: z.string().optional(), page: pageArg },
+    },
+    safe(({ script, label, parent, page }) => text(suggest(script, label, parent, page))),
+  );
+
+  server.registerTool(
+    'suggestions_list',
+    { description: 'List suggestions (change sets) and their status.', inputSchema: { status: z.enum(['pending', 'accepted', 'rejected']).optional() } },
+    safe(({ status }) => {
+      const list = session.reviews.changesets.filter((c) => !status || c.status === status);
+      return text(list.length ? list.map((c) => `${c.id} [${c.status}] ${c.author}: ${c.label}${c.conflict ? ` (conflict: ${c.conflict.split('\n')[0]})` : ''}`).join('\n') : 'No suggestions.');
+    }),
+  );
+
+  server.registerTool(
+    'comments_list',
+    {
+      description: 'Comment threads and review pins on the design (open by default).',
+      inputSchema: { includeResolved: z.boolean().optional(), node: z.string().optional() },
+    },
+    safe(({ includeResolved, node }) => {
+      const list = session.reviews.threads.filter((t) => (includeResolved || !t.resolved) && (!node || t.node === node));
+      if (!list.length) return text('No open threads.');
+      return text(
+        list
+          .map((t) => {
+            const head = `${t.id} ${t.kind === 'review' ? `[${t.severity ?? 'P2'} review] ` : ''}${t.node ? `#${t.node}` : '(page)'}${t.resolved ? ' (resolved)' : ''}${t.title ? ` — ${t.title}` : ''}`;
+            const body = t.comments.map((c) => `  ${c.author}: ${c.body}`).join('\n');
+            return `${head}\n${body}${t.fix ? `\n  fix: ${t.fix.replace(/\n/g, ' ; ')}` : ''}`;
+          })
+          .join('\n'),
+      );
+    }),
+  );
+
+  server.registerTool(
+    'inbox',
+    { description: 'Open threads where a human mentioned @agent / @claude / @cursor / @darshana and is waiting for your reply.', inputSchema: {} },
+    safe(() => {
+      const list = session.agentInbox();
+      return text(list.length ? list.map((t) => `${t.id} ${t.node ? `#${t.node}` : '(page)'}\n${t.comments.map((c) => `  ${c.author}: ${c.body}`).join('\n')}`).join('\n') : 'Inbox empty.');
+    }),
+  );
+
+  server.registerTool(
+    'comment',
+    {
+      description: 'Add a comment thread on a node (or the page), reply to a thread, or resolve it.',
+      inputSchema: {
+        action: z.enum(['add', 'reply', 'resolve', 'reopen']),
+        node: z.string().optional().describe('for add: node id without #'),
+        thread: z.string().optional().describe('for reply/resolve: thread id like t3'),
+        body: z.string().optional(),
+      },
+    },
+    safe(({ action, node, thread, body }) => {
+      if (action === 'add') {
+        if (!body) throw new Error('body required');
+        const t = session.addThread({ node: node ?? null, author, body });
+        return text(`Added ${t.id}${node ? ` on #${node}` : ''}.`);
+      }
+      if (!thread) throw new Error('thread required');
+      if (action === 'reply') {
+        if (!body) throw new Error('body required');
+        session.reply(thread, author, body);
+        return text(`Replied on ${thread}.`);
+      }
+      session.resolveThread(thread, action === 'resolve');
+      return text(`${thread} ${action === 'resolve' ? 'resolved' : 'reopened'}.`);
+    }),
+  );
+
+  server.registerTool(
+    'review_add',
+    {
+      description: 'Post design-review findings as pins on the canvas (e.g. from the darshana-thakur reviewer). Each finding may include a ready RDL fix the human can apply with one click.',
+      inputSchema: {
+        title: z.string().optional(),
+        findings: z.array(z.object({ node: z.string().nullable(), severity: z.enum(['P0', 'P1', 'P2', 'P3']), message: z.string(), fix: z.string().optional() })).min(1).max(40),
+      },
+    },
+    safe(({ title, findings }) => {
+      const bad = findings.filter((f) => f.node && !doc.findNode(f.node));
+      if (bad.length) throw new Error(`Unknown nodes: ${bad.map((f) => `#${f.node}`).join(', ')}`);
+      for (const f of findings) {
+        if (f.fix) {
+          const p = previewScript(doc, f.fix);
+          if (p.error) throw new Error(`Fix for #${f.node} is not valid RDL: ${p.error}`);
+        }
+      }
+      const ids = findings.map((f) => session.addThread({ node: f.node, author, body: f.message, kind: 'review', severity: f.severity, fix: f.fix, title }).id);
+      return text(`Posted ${ids.length} review pins: ${ids.join(' ')}`);
+    }),
+  );
+
+  server.registerTool(
+    'version_save',
+    { description: 'Save a named version (full snapshot) to compare against later.', inputSchema: { name: z.string() } },
+    safe(async ({ name }) => {
+      const v = await session.saveVersion(name, author);
+      return text(`Saved ${v.id} "${v.name}".`);
+    }),
+  );
+
+  server.registerTool(
+    'diff',
+    {
+      description: 'What changed: compare a saved version (or a pending suggestion) with the current design. Output is compact RDL with + - ~ markers.',
+      inputSchema: { from: z.string().describe('version id like v2, or suggestion id like cs3 (shows what accepting it would change)'), page: pageArg },
+    },
+    safe(async ({ from, page }) => {
+      if (/^cs\d+$/.test(from)) {
+        const cs = session.changeset(from);
+        const p = previewScript(doc, cs.script, { page });
+        if (p.error) return text(`${from} no longer applies cleanly: ${p.error}`);
+        return text(formatDiff(doc.data, p.doc.data, diffDocuments(doc.data, p.doc.data, page), page));
+      }
+      const before = await session.loadVersion(from);
+      return text(formatDiff(before, doc.data, diffDocuments(before, doc.data, page), page));
+    }),
+  );
+
+  server.registerTool(
+    'versions_list',
+    { description: 'Saved versions.', inputSchema: {} },
+    safe(() => text(session.reviews.versions.map((v) => `${v.id} "${v.name}" by ${v.author} ${new Date(v.time).toISOString().slice(0, 16).replace('T', ' ')}`).join('\n') || 'No versions saved.')),
   );
 
   server.registerTool(

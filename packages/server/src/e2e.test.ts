@@ -136,6 +136,53 @@ Runs col gap6 p6 w960 fill:canvas
     expect(await readFile(out, 'utf8')).toContain('@keyframes rg-n5-enter');
   });
 
+  it('collaboration: suggest mode, accept/reject, inbox, review pins, versions + diff', async () => {
+    const H = { 'content-type': 'application/json' };
+    const post = (p: string, b: unknown) => fetch(previewUrl + p, { method: 'POST', headers: H, body: JSON.stringify(b) });
+
+    const v1 = await call('version_save', { name: 'before review' });
+    expect(v1.text).toContain('Saved v1');
+
+    // owner switches agent to suggest mode → rdl_apply no longer changes the design
+    expect((await post('api/mode', { mode: 'suggest' })).status).toBe(200);
+    const sug = await call('rdl_apply', { script: 'set #n3 "Test runs (suggested)"', label: 'rename title' });
+    expect(sug.text).toContain('Saved as suggestion cs1 — NOT applied');
+    expect(sug.text).toContain('~ #n3 [text]');
+    expect((await call('node_get', { ids: ['n3'] })).text).toContain('"Test runs"');
+
+    const sug2 = await call('suggest', { script: 'set #n6 fill:subtle', label: 'quieter card' });
+    expect(sug2.text).toContain('cs2');
+    const d = await call('diff', { from: 'cs2' });
+    expect(d.text).toContain('~ #n6 [style]');
+
+    // human accepts cs1, rejects cs2
+    expect((await post('api/changesets/cs1/accept', {})).status).toBe(200);
+    expect((await call('node_get', { ids: ['n3'] })).text).toContain('Test runs (suggested)');
+    expect((await post('api/changesets/cs2/reject', {})).status).toBe(200);
+    expect((await call('suggestions_list', {})).text).toMatch(/cs1 \[accepted\][\s\S]*cs2 \[rejected\]/);
+    // accepted change is one undoable step attributed to the human + agent
+    expect((await call('history', { limit: 1 })).text).toContain('accepted agent');
+    await post('api/mode', { mode: 'direct' });
+
+    // human mentions @agent → inbox → agent replies → inbox clears
+    const th = (await (await post('api/threads', { node: 'n5', body: '@agent can this card be less boxy?' })).json()) as { id: string };
+    expect((await call('inbox')).text).toContain(th.id);
+    await call('comment', { action: 'reply', thread: th.id, body: 'Suggest removing the border and using spacing instead.' });
+    expect((await call('inbox')).text).toBe('Inbox empty.');
+
+    // reviewer posts findings with fixes; invalid fix is rejected up front
+    const bad = await call('review_add', { findings: [{ node: 'n5', severity: 'P2', message: 'x', fix: 'set #n5 gap99' }] });
+    expect(bad.isError).toBe(true);
+    const rv = await call('review_add', { title: 'Darshana review', findings: [{ node: 'n5', severity: 'P2', message: 'Card border + fill is heavy; rely on spacing', fix: 'set #n5 stroke:none' }] });
+    expect(rv.text).toMatch(/Posted 1 review pins: t\d+/);
+    const reviews = (await (await fetch(previewUrl + 'api/reviews')).json()) as { threads: { kind: string; fix?: string }[] };
+    expect(reviews.threads.some((t) => t.kind === 'review' && t.fix === 'set #n5 stroke:none')).toBe(true);
+
+    // diff against the saved version shows the accepted rename
+    const dv = await call('diff', { from: 'v1' });
+    expect(dv.text).toContain('now: Text#n3 headline "Test runs (suggested)"');
+  });
+
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));
     const page = JSON.parse(await readFile(join(dir, 'app.rangoli', 'pages', 'p1.json'), 'utf8')) as { nodes: Record<string, unknown> };

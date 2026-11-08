@@ -25,6 +25,9 @@ RDL quick reference (one node per line, indentation = children):
   Motion rules: explain change, never decorate; ≤200ms for hover/press; exits faster than enters; no bounce, no hover-lift on static cards.
   Use motion_presets / motion_preset, and motion_curve to "see" timing as numbers.
 Rules: use tokens not raw values; one primary action per view; every script is atomic + one undo step.
+Collaboration: check doc_info for agent mode — in "suggest" mode your rdl_apply becomes a suggestion a human approves.
+  Use suggest for big/subjective changes anyway. Check inbox for @agent mentions and reply with comment.
+  Reviewers post findings with review_add (pins with optional RDL fixes). diff shows what changed vs a version/suggestion.
 Always run lint after changes and fix P0/P1. Call rdl_help for the full reference.`;
 
 export const RDL_HELP = `${INSTRUCTIONS}

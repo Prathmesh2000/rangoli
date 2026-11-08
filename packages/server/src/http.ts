@@ -1,210 +1,287 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRdl, defaultTokens, renderDocument, serializeRdl, lint, formatLint, type ChangeEntry } from '@rangoli/engine';
-import type { Session } from './session.js';
+import { applyRdl, defaultTokens, formatLint, lint, renderDocument, serializeRdl, type ChangeEntry, type Severity } from '@rangoli/engine';
+import { PREVIEW_CLIENT } from './preview-client.js';
+import type { AgentMode, Role, Session } from './session.js';
 
 /** Built editor bundle (packages/editor/dist), served at /editor/ */
 const EDITOR_DIR = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../editor/dist');
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 
-const CLIENT = `
-<style>
-.rangoli-bar{position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;gap:4px;align-items:center;padding:4px;border-radius:8px;
-  background:rgba(20,22,26,.86);color:#e8eaed;font:500 12px/1 ui-sans-serif,system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25)}
-.rangoli-bar button{all:unset;cursor:pointer;padding:6px 10px;border-radius:6px}
-.rangoli-bar button:hover{background:rgba(255,255,255,.12)}
-.rangoli-bar button[aria-pressed="true"]{background:rgba(255,255,255,.2)}
-.rangoli-bar .sel{padding:0 8px;opacity:.75;font-family:ui-monospace,monospace}
-.rangoli-bar .dot{width:8px;height:8px;border-radius:50%;background:#3fb950;margin:0 6px}
-.rangoli-bar .dot.off{background:#d29922}
-[data-rid].rangoli-selected{outline:2px solid #2f81f7!important;outline-offset:1px}
-[data-rid].rangoli-hover{outline:1px dashed #2f81f7!important;outline-offset:1px}
-</style>
-<div class="rangoli-bar" role="toolbar" aria-label="Rangoli preview">
-  <span class="dot" title="live"></span>
-  <button data-mode="light">Light</button><button data-mode="dark">Dark</button>
-  <span class="sel" aria-live="polite"></span>
-</div>
-<script>
-(() => {
-  const html = document.documentElement, bar = document.querySelector('.rangoli-bar');
-  const sel = bar.querySelector('.sel'), dot = bar.querySelector('.dot');
-  const params = new URLSearchParams(location.search);
-  const setMode = (m) => {
-    if (m === 'light') html.removeAttribute('data-mode'); else html.setAttribute('data-mode', m);
-    bar.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
-    params.set('mode', m); history.replaceState(null, '', '?' + params);
-  };
-  setMode(params.get('mode') || 'light');
-  bar.addEventListener('click', e => { const m = e.target.dataset && e.target.dataset.mode; if (m) setMode(m); });
-  let selected = (params.get('sel') || '').split(',').filter(Boolean);
-  const paint = () => {
-    document.querySelectorAll('.rangoli-selected').forEach(el => el.classList.remove('rangoli-selected'));
-    selected.forEach(id => { const el = document.querySelector('[data-rid="' + id + '"]'); if (el) el.classList.add('rangoli-selected'); });
-    sel.textContent = selected.length ? selected.map(s => '#' + s).join(' ') : 'click to select';
-  };
-  paint();
-  document.addEventListener('mouseover', e => { const el = e.target.closest('[data-rid]'); document.querySelectorAll('.rangoli-hover').forEach(x => x.classList.remove('rangoli-hover')); if (el) el.classList.add('rangoli-hover'); });
-  document.addEventListener('click', e => {
-    if (e.target.closest('.rangoli-bar')) return;
-    const el = e.target.closest('[data-rid]');
-    e.preventDefault();
-    const id = el ? el.dataset.rid : null;
-    if (!id) selected = []; else if (e.shiftKey) selected = selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]; else selected = [id];
-    params.set('sel', selected.join(',')); history.replaceState(null, '', '?' + params);
-    paint();
-    fetch('/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: selected }) });
-  }, true);
-  const es = new EventSource('/events');
-  es.onopen = () => dot.classList.remove('off');
-  es.onerror = () => dot.classList.add('off');
-  es.addEventListener('change', () => location.reload());
-})();
-</script>`;
+const RANK: Record<Role, number> = { viewer: 0, reviewer: 1, editor: 2, owner: 3 };
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 export interface PreviewServer {
   url: string;
   server: Server;
+  /** LAN base URLs when sharing is enabled */
+  lanUrls: string[];
   close(): Promise<void>;
 }
 
-export async function startPreview(session: Session, port = 4400, host = '127.0.0.1'): Promise<PreviewServer> {
+export interface PreviewOptions {
+  port?: number;
+  /** listen on all interfaces so teammates on the network can join with invite links */
+  share?: boolean;
+}
+
+function lanAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((a): a is NonNullable<typeof a> => !!a && a.family === 'IPv4' && !a.internal)
+    .map((a) => a.address);
+}
+
+function cookie(req: IncomingMessage, name: string): string | undefined {
+  for (const part of (req.headers.cookie ?? '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return undefined;
+}
+
+const cleanName = (s: unknown) => (typeof s === 'string' ? s.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 32) : '');
+
+export async function startPreview(session: Session, portOrOpts: number | PreviewOptions = 4400, legacyHost?: string): Promise<PreviewServer> {
+  const opts: PreviewOptions = typeof portOrOpts === 'number' ? { port: portOrOpts } : portOrOpts;
+  const host = opts.share ? '0.0.0.0' : legacyHost ?? '127.0.0.1';
+  const lan = opts.share ? lanAddresses() : [];
+  const allowedHosts = new Set(['127.0.0.1', 'localhost', '[::1]', ...lan]);
+
+  // ---------------- server-sent events ----------------
   const clients = new Set<ServerResponse>();
   const send = (event: string, data: unknown) => {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const c of clients) c.write(payload);
   };
-  // preview page reloads after save; editor patches instantly on every change
-  const onChange = () => send('change', Date.now());
+  const onSaved = () => send('change', Date.now()); // preview page reloads after save
   const onDoc = (e: ChangeEntry) => send('doc', { seq: e.seq, author: e.author, label: e.label ?? null, touched: e.touched, time: e.time });
-  session.on('saved', onChange);
+  const onSelection = (ids: string[]) => send('selection', ids);
+  const onReviews = () => send('reviews', Date.now());
+  const onPresence = (list: unknown) => send('presence', list);
+  const onMode = (m: AgentMode) => send('mode', m);
+  session.on('saved', onSaved);
   session.on('change', onDoc);
-  session.on('selection', (ids: string[]) => send('selection', ids));
+  session.on('selection', onSelection);
+  session.on('reviews', onReviews);
+  session.on('presence', onPresence);
+  session.on('mode', onMode);
 
   const readBody = (req: IncomingMessage) =>
     new Promise<string>((res, rej) => {
       let b = '';
       req.on('data', (c: Buffer) => {
         b += c;
-        if (b.length > 1e6) req.destroy();
+        if (b.length > 2e6) req.destroy();
       });
       req.on('end', () => res(b));
       req.on('error', rej);
     });
 
   const server = createServer(async (req, res) => {
+    const json = (status: number, body: unknown) => {
+      res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(body));
+    };
+    const deny = (status: number, msg: string) => res.writeHead(status, { 'content-type': 'text/plain' }).end(msg);
     try {
-      const url = new URL(req.url ?? '/', `http://${host}`);
-      // --- local-server hardening: block DNS rebinding and cross-site writes ---
-      const hostHeader = (req.headers.host ?? '').replace(/:\d+$/, '');
-      if (!['127.0.0.1', 'localhost', '[::1]'].includes(hostHeader)) {
-        res.writeHead(403, { 'content-type': 'text/plain' }).end('Forbidden host');
-        return;
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const hostName = (req.headers.host ?? '').replace(/:\d+$/, '');
+
+      // ---------------- who is this? ----------------
+      // Loopback = the owner's own machine. Everyone else needs an invite token (cookie or ?t=).
+      let role: Role | null = null;
+      const loopback = LOOPBACK.has(req.socket.remoteAddress ?? '');
+      if (loopback) {
+        // DNS-rebinding guard: a hostile page in the owner's browser would arrive with a foreign Host header
+        if (!allowedHosts.has(hostName)) return deny(403, 'Forbidden host');
+        role = 'owner';
+      } else {
+        const qt = url.searchParams.get('t');
+        const token = qt ?? cookie(req, 'rangoli_t');
+        role = token ? session.shareTokens.get(token) ?? null : null;
+        if (!role) return deny(401, 'This Rangoli session needs an invite link.');
+        if (qt) res.setHeader('set-cookie', `rangoli_t=${encodeURIComponent(qt)}; HttpOnly; SameSite=Strict; Path=/`);
       }
+      const can = (min: Role) => RANK[role!] >= RANK[min];
+      const name = cleanName(req.headers['x-rangoli-name']) || (role === 'owner' ? '' : role);
+      const author = name ? `human:${name}` : 'human';
+
+      // ---------------- CSRF: writes must be same-origin JSON ----------------
       if (req.method !== 'GET') {
         const origin = req.headers.origin;
         const ctype = req.headers['content-type'] ?? '';
-        if ((origin && !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(origin)) || !ctype.startsWith('application/json')) {
-          res.writeHead(403, { 'content-type': 'text/plain' }).end('Cross-origin or non-JSON write rejected');
-          return;
+        let originOk = true;
+        if (origin) {
+          try {
+            originOk = new URL(origin).host === req.headers.host;
+          } catch {
+            originOk = false;
+          }
         }
+        if (!originOk || !ctype.startsWith('application/json')) return deny(403, 'Cross-origin or non-JSON write rejected');
       }
-      const json = (status: number, body: unknown) => {
-        res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(JSON.stringify(body));
-      };
-      // ---------------- editor API ----------------
+      const body = async <T>() => JSON.parse((await readBody(req)) || '{}') as T;
+
+      // ---------------- read API ----------------
       if (url.pathname === '/api/doc' && req.method === 'GET') {
         const h = session.doc.historyEntries;
-        json(200, {
+        return json(200, {
           data: session.doc.data,
-          dir: session.dir,
+          dir: role === 'owner' ? session.dir : '',
           seq: h.at(-1)?.seq ?? 0,
           history: h.slice(-50).map((e) => ({ seq: e.seq, author: e.author, label: e.label ?? null, time: e.time, touched: e.touched.length })),
           selection: session.selection,
+          role,
+          agentMode: session.agentMode,
+          presence: session.presenceList(),
         });
-        return;
+      }
+      if (url.pathname === '/api/reviews' && req.method === 'GET') return json(200, session.reviews);
+      if (url.pathname === '/api/lint' && req.method === 'GET') return json(200, lint(session.doc));
+      let m: RegExpExecArray | null;
+      if ((m = /^\/api\/versions\/(v\d+)$/.exec(url.pathname)) && req.method === 'GET') return json(200, await session.loadVersion(m[1]!));
+
+      // ---------------- presence (everyone) ----------------
+      if (url.pathname === '/api/presence' && req.method === 'POST') {
+        const b = await body<{ clientId?: string; name?: string; selection?: unknown }>();
+        if (typeof b.clientId !== 'string' || b.clientId.length > 64) return json(400, { error: 'clientId required' });
+        const sel = Array.isArray(b.selection) ? b.selection.filter((x): x is string => typeof x === 'string').slice(0, 50) : [];
+        session.touchPresence({ clientId: b.clientId, name: cleanName(b.name) || role, role, selection: sel });
+        return json(200, { ok: true });
+      }
+      if (url.pathname === '/select' && req.method === 'POST') {
+        const b = await body<{ ids?: unknown }>();
+        session.setSelection(Array.isArray(b.ids) ? b.ids.filter((x): x is string => typeof x === 'string' && !!session.doc.findNode(x)) : []);
+        return void res.writeHead(204).end();
+      }
+
+      // ---------------- comments (reviewer+) ----------------
+      if (url.pathname.startsWith('/api/threads') && req.method === 'POST') {
+        if (!can('reviewer')) return json(403, { error: 'Viewers cannot comment' });
+        if (url.pathname === '/api/threads') {
+          const b = await body<{ node?: string | null; body?: string; kind?: 'comment' | 'review'; severity?: Severity; fix?: string; title?: string }>();
+          if (!b.body?.trim()) return json(400, { error: 'body required' });
+          return json(200, session.addThread({ node: b.node ?? null, author, body: b.body.trim(), kind: b.kind, severity: b.severity, fix: b.fix, title: b.title }));
+        }
+        if ((m = /^\/api\/threads\/(t\d+)\/(reply|resolve)$/.exec(url.pathname))) {
+          const b = await body<{ body?: string; resolved?: boolean }>();
+          if (m[2] === 'reply') {
+            if (!b.body?.trim()) return json(400, { error: 'body required' });
+            return json(200, session.reply(m[1]!, author, b.body.trim()));
+          }
+          return json(200, session.resolveThread(m[1]!, b.resolved !== false));
+        }
+      }
+
+      // ---------------- suggestions: reviewers may propose, editors decide ----------------
+      if (url.pathname === '/api/changesets' && req.method === 'POST') {
+        if (!can('reviewer')) return json(403, { error: 'Viewers cannot suggest' });
+        const b = await body<{ script?: string; label?: string }>();
+        if (!b.script?.trim()) return json(400, { error: 'script required' });
+        return json(200, session.addChangeset({ author, label: b.label?.slice(0, 120) || 'suggestion', script: b.script }));
+      }
+      if ((m = /^\/api\/changesets\/(cs\d+)\/(accept|reject)$/.exec(url.pathname)) && req.method === 'POST') {
+        if (!can('editor')) return json(403, { error: 'Only editors can accept or reject suggestions' });
+        try {
+          return json(200, session.decideChangeset(m[1]!, m[2] as 'accept' | 'reject', author));
+        } catch (e) {
+          return json(409, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      // ---------------- editing (editor+) ----------------
+      if (req.method === 'POST' && ['/api/rdl', '/api/undo', '/api/redo', '/api/tokens/brand', '/api/versions'].includes(url.pathname) && !can('editor')) {
+        return json(403, { error: `Your role (${role}) cannot edit. Suggest a change or comment instead.` });
       }
       if (url.pathname === '/api/rdl' && req.method === 'POST') {
-        const body = JSON.parse((await readBody(req)) || '{}') as { script?: string; label?: string; parent?: string };
-        if (typeof body.script !== 'string') return json(400, { error: 'script required' });
+        const b = await body<{ script?: string; label?: string; parent?: string }>();
+        if (typeof b.script !== 'string') return json(400, { error: 'script required' });
         try {
-          const r = applyRdl(session.doc, body.script, { author: 'human', label: body.label, parent: body.parent });
-          json(200, { created: r.created, touched: r.touched });
+          const r = applyRdl(session.doc, b.script, { author, label: b.label, parent: b.parent });
+          return json(200, { created: r.created, touched: r.touched });
         } catch (e) {
-          json(400, { error: e instanceof Error ? e.message : String(e) });
+          return json(400, { error: e instanceof Error ? e.message : String(e) });
         }
-        return;
       }
       if ((url.pathname === '/api/undo' || url.pathname === '/api/redo') && req.method === 'POST') {
         const e = url.pathname === '/api/undo' ? session.doc.undo() : session.doc.redo();
-        json(200, { ok: !!e, seq: e?.seq ?? null, label: e?.label ?? null });
-        return;
+        return json(200, { ok: !!e, seq: e?.seq ?? null, label: e?.label ?? null });
       }
       if (url.pathname === '/api/tokens/brand' && req.method === 'POST') {
-        const body = JSON.parse((await readBody(req)) || '{}') as { brand?: string };
-        if (!body.brand || !/^#[0-9a-fA-F]{6}$/.test(body.brand)) return json(400, { error: 'brand must be #rrggbb' });
-        session.doc.apply([{ op: 'setTokens', tokens: defaultTokens({ brand: body.brand }) }], { author: 'human', label: `brand ${body.brand}` });
-        json(200, { ok: true });
-        return;
+        const b = await body<{ brand?: string }>();
+        if (!b.brand || !/^#[0-9a-fA-F]{6}$/.test(b.brand)) return json(400, { error: 'brand must be #rrggbb' });
+        session.doc.apply([{ op: 'setTokens', tokens: defaultTokens({ brand: b.brand }) }], { author, label: `brand ${b.brand}` });
+        return json(200, { ok: true });
       }
-      if (url.pathname === '/api/lint' && req.method === 'GET') {
-        json(200, lint(session.doc));
-        return;
+      if (url.pathname === '/api/versions' && req.method === 'POST') {
+        const b = await body<{ name?: string }>();
+        return json(200, await session.saveVersion(cleanName(b.name) || `Version ${session.reviews.versions.length + 1}`, author));
       }
-      if (url.pathname === '/editor' || url.pathname.startsWith('/editor/')) {
-        if (!existsSync(EDITOR_DIR)) {
-          res.writeHead(503, { 'content-type': 'text/plain' }).end('Editor not built. Run: npm run build -w @rangoli/editor');
-          return;
-        }
-        let rel = url.pathname.replace(/^\/editor\/?/, '') || 'index.html';
-        const file = normalize(join(EDITOR_DIR, rel));
-        if (!file.startsWith(EDITOR_DIR)) return void res.writeHead(403).end();
-        rel = existsSync(file) ? file : join(EDITOR_DIR, 'index.html'); // SPA fallback
-        res.writeHead(200, { 'content-type': MIME[extname(rel)] ?? 'application/octet-stream', 'cache-control': rel.endsWith('index.html') ? 'no-store' : 'public, max-age=31536000, immutable' });
-        res.end(await readFile(rel));
-        return;
+
+      // ---------------- owner only ----------------
+      if (url.pathname === '/api/share' && req.method === 'GET') {
+        if (!can('owner')) return json(403, { error: 'Only the owner can see invite links' });
+        const bases = lan.map((a) => `http://${a}:${(req.headers.host ?? '').split(':')[1] ?? ''}/editor/`);
+        const links = [...session.shareTokens].map(([token, r]) => ({ role: r, urls: bases.map((b) => `${b}?t=${token}`) }));
+        return json(200, { sharing: !!opts.share, links });
       }
-      // ---------------- preview ----------------
-      if (req.method === 'GET' && url.pathname === '/') {
-        const page = renderDocument(session.doc, { editorAttrs: true, mode: url.searchParams.get('mode') ?? 'light' });
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(page.replace('</body>', `${CLIENT}\n</body>`));
-        return;
+      if (url.pathname === '/api/mode' && req.method === 'POST') {
+        if (!can('owner')) return json(403, { error: 'Only the owner can change agent mode' });
+        const b = await body<{ mode?: AgentMode }>();
+        if (b.mode !== 'direct' && b.mode !== 'suggest') return json(400, { error: 'mode must be direct or suggest' });
+        session.setAgentMode(b.mode);
+        return json(200, { mode: b.mode });
       }
+
+      // ---------------- live events ----------------
       if (req.method === 'GET' && url.pathname === '/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
         res.write(': connected\n\n');
         clients.add(res);
+        const clientId = url.searchParams.get('client');
+        if (clientId && clientId.length <= 64) session.touchPresence({ clientId, name: cleanName(url.searchParams.get('name')) || role, role, selection: [] });
         const ping = setInterval(() => res.write(': ping\n\n'), 25000);
         req.on('close', () => {
           clearInterval(ping);
           clients.delete(res);
+          if (clientId) session.dropPresence(clientId);
         });
         return;
       }
-      if (req.method === 'POST' && url.pathname === '/select') {
-        const body = JSON.parse((await readBody(req)) || '{}') as { ids?: unknown };
-        session.setSelection(Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === 'string' && !!session.doc.findNode(x)) : []);
-        res.writeHead(204).end();
-        return;
+
+      // ---------------- static: editor ----------------
+      if (url.pathname === '/editor' || url.pathname.startsWith('/editor/')) {
+        if (!existsSync(EDITOR_DIR)) return deny(503, 'Editor not built. Run: npm run build -w @rangoli/editor');
+        let rel = url.pathname.replace(/^\/editor\/?/, '') || 'index.html';
+        const file = normalize(join(EDITOR_DIR, rel));
+        if (!file.startsWith(EDITOR_DIR)) return deny(403, 'Forbidden');
+        rel = existsSync(file) ? file : join(EDITOR_DIR, 'index.html'); // SPA fallback
+        res.writeHead(200, { 'content-type': MIME[extname(rel)] ?? 'application/octet-stream', 'cache-control': rel.endsWith('index.html') ? 'no-store' : 'public, max-age=31536000, immutable' });
+        return void res.end(await readFile(rel));
+      }
+
+      // ---------------- preview ----------------
+      if (req.method === 'GET' && url.pathname === '/') {
+        const page = renderDocument(session.doc, { editorAttrs: true, mode: url.searchParams.get('mode') ?? 'light' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return void res.end(page.replace('</body>', `${PREVIEW_CLIENT}\n</body>`));
       }
       if (req.method === 'GET' && url.pathname === '/rdl') {
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-        res.end(serializeRdl(session.doc));
-        return;
+        return void res.end(serializeRdl(session.doc));
       }
       if (req.method === 'GET' && url.pathname === '/lint') {
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-        res.end(formatLint(lint(session.doc)));
-        return;
+        return void res.end(formatLint(lint(session.doc)));
       }
-      res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
+      deny(404, 'Not found');
     } catch (e) {
-      res.writeHead(500, { 'content-type': 'text/plain' }).end(e instanceof Error ? e.message : String(e));
+      if (!res.headersSent) json(500, { error: e instanceof Error ? e.message : String(e) });
     }
   });
 
@@ -216,16 +293,21 @@ export async function startPreview(session: Session, port = 4400, host = '127.0.
       });
       server.listen(p, host, () => resolveP(p));
     };
-    tryListen(port, 20);
+    tryListen(opts.port ?? 4400, 20);
   });
 
   return {
-    url: `http://${host}:${actualPort}/`,
+    url: `http://127.0.0.1:${actualPort}/`,
+    lanUrls: lan.map((a) => `http://${a}:${actualPort}/`),
     server,
     close: () =>
       new Promise((r) => {
-        session.off('saved', onChange);
+        session.off('saved', onSaved);
         session.off('change', onDoc);
+        session.off('selection', onSelection);
+        session.off('reviews', onReviews);
+        session.off('presence', onPresence);
+        session.off('mode', onMode);
         for (const c of clients) c.end();
         server.close(() => r());
       }),

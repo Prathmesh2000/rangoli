@@ -11,7 +11,7 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 | 0 | Engine (model, atomic ops + undo, RDL, OKLCH tokens + contrast, HTML/CSS renderer, linter, file format) + MCP server + live preview + CLI | ✅ done |
 | 1 | Visual editor: canvas (shadow DOM, exact CSS), layers, inspector (Design/RDL/CSS), tokens & palette, lint with one-click fixes, activity feed, live sync with agents, shared undo, copy/paste as RDL | ✅ done |
 | 2 | Motion as data (RDL `motion` blocks): states → CSS transitions, enter/exit → keyframes, springs → CSS `linear()`, automatic reduced-motion variants, motion lint (M01–M11), presets, `motion_curve` value tables for agents, editor Motion tab with replay | ✅ done |
-| 3 | Collaboration & review (rooms, roles, change sets, comments, diff) | |
+| 3 | Collaboration & review: agent "Apply directly / Ask first" mode, suggestions (change sets) with side-by-side / stacked compare + accept/reject, comment threads with @agent inbox, review pins with one-click fixes, named versions + diff, presence, LAN sharing with editor/reviewer/viewer invite links | ✅ done |
 | 4 | Timeline, smart/layout animate, prototype + exports | |
 | 5 | Icon Studio | |
 | 6 | Image Studio (compose/edit) | |
@@ -58,9 +58,23 @@ motion #n1
 
 ## MCP tools
 
-`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · rdl_help`
+`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · rdl_help`
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
+
+## Collaboration
+
+```bash
+node packages/server/dist/cli.js serve ./designs/app.rangoli --share
+# prints invite links:  editor / reviewer / viewer  (http://<your-lan-ip>:4400/editor/?t=…)
+```
+
+- Your own machine is always the owner. Everyone else needs an invite link (token → HttpOnly cookie).
+- Viewer: read · Reviewer: comment + suggest · Editor: edit + accept/reject · Owner: + agent mode, invites.
+- Agent mode (Review tab): **Apply directly** or **Ask first** — in Ask first, the agent's `rdl_apply` becomes a suggestion you accept or reject after comparing before/after.
+- Mention `@agent` in a comment; the agent sees it via the `inbox` tool and replies in the thread.
+- Reviewers (e.g. the darshana-thakur subagent) post findings with `review_add`; each becomes a pin on the canvas with an optional one-click fix.
+- The server is the single source of truth (edits are serialized as RDL), so there is no CRDT and no merge conflicts — a suggestion that no longer applies is flagged instead.
 
 ## Editor
 

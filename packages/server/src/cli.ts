@@ -11,8 +11,9 @@ const HELP = `rangoli — agent-first design tool
 
 Usage:
   rangoli init <dir.rangoli> [--name "My App"] [--brand #2a6fb0]   create a document
-  rangoli mcp <dir.rangoli> [--port 4400] [--no-preview]           MCP server on stdio for agents (+ live preview)
-  rangoli serve <dir.rangoli> [--port 4400]                         live preview only (browser)
+  rangoli mcp <dir.rangoli> [--port 4400] [--no-preview] [--share]  MCP server on stdio for agents (+ editor)
+  rangoli serve <dir.rangoli> [--port 4400] [--share]               editor + preview only (browser)
+      --share   listen on the local network and print invite links (editor / reviewer / viewer)
   rangoli apply <dir.rangoli> <script.rdl>                          apply an RDL script
   rangoli show <dir.rangoli> [--outline]                            print the document as RDL
   rangoli lint <dir.rangoli>                                        lint (exit 1 on P0/P1)
@@ -20,6 +21,19 @@ Usage:
 
 Connect Claude Code:
   claude mcp add rangoli -- node <path>/packages/server/dist/cli.js mcp <abs path to dir.rangoli>`;
+
+/** Create one invite token per role and print LAN links (owner shares them with teammates). */
+function printInvites(session: Session, lanUrls: string[], log: (...m: unknown[]) => void) {
+  if (!lanUrls.length) {
+    log('[rangoli] --share: no network interface found; only this machine can connect.');
+    return;
+  }
+  log('[rangoli] Invite links (anyone with a link gets that role until the server stops):');
+  for (const role of ['editor', 'reviewer', 'viewer'] as const) {
+    const token = session.createShareToken(role);
+    log(`  ${role.padEnd(8)} ${lanUrls.map((u) => `${u}editor/?t=${token}`).join('  ')}`);
+  }
+}
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -46,12 +60,14 @@ async function main() {
       const session = await Session.openOrCreate(target);
       let previewUrl: string | undefined;
       if (!rest.includes('--no-preview')) {
-        const p = await startPreview(session, Number(flag(rest, '--port') ?? 4400));
+        const p = await startPreview(session, { port: Number(flag(rest, '--port') ?? 4400), share: rest.includes('--share') });
         previewUrl = p.url;
-        log(`[rangoli] live preview ${p.url}`);
+        log(`[rangoli] editor ${p.url}editor/`);
+        if (rest.includes('--share')) printInvites(session, p.lanUrls, log);
       }
       const server = createMcpServer(session, { previewUrl, author: 'agent' });
       await server.connect(new StdioServerTransport());
+      session.touchPresence({ clientId: 'agent', name: 'Agent', role: 'agent', selection: [] });
       log(`[rangoli] MCP ready for ${session.dir}`);
       const shutdown = async () => {
         await session.flush();
@@ -64,8 +80,15 @@ async function main() {
     }
     case 'serve': {
       const session = await Session.openOrCreate(target);
-      const p = await startPreview(session, Number(flag(rest, '--port') ?? 4400));
-      log(`Rangoli preview: ${p.url}  (Ctrl+C to stop)`);
+      const p = await startPreview(session, { port: Number(flag(rest, '--port') ?? 4400), share: rest.includes('--share') });
+      log(`Rangoli editor: ${p.url}editor/   preview: ${p.url}  (Ctrl+C to stop)`);
+      if (rest.includes('--share')) printInvites(session, p.lanUrls, log);
+      const stop = async () => {
+        await session.flush();
+        process.exit(0);
+      };
+      process.on('SIGINT', stop);
+      process.on('SIGTERM', stop);
       return;
     }
     case 'apply': {

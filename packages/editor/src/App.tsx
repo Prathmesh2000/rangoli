@@ -5,7 +5,8 @@ import { duplicateScript, indent, stripIds } from './helpers';
 import { Inspector } from './Inspector';
 import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
-import { connect, getState, rdl, redo, requestFit, select, setMode, setZoom, undo, useEditor } from './store';
+import { ReviewPanel } from './ReviewPanel';
+import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setZoom, undo, useEditor, myClientId } from './store';
 
 const INSERTS: { key: string; label: string; rdl: string }[] = [
   { key: 'frame', label: 'Frame', rdl: 'Frame col gap3 p4 w320 fill:surface stroke:border r3' },
@@ -46,6 +47,11 @@ function useShortcuts() {
       if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(s.zoom * 1.2); return; }
       if (mod && e.key === '-') { e.preventDefault(); setZoom(s.zoom / 1.2); return; }
       if (!doc) return;
+      if (!canEdit()) {
+        // viewers/reviewers: navigation only
+        if (e.key === 'Escape') select([]);
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
         e.preventDefault();
         void rdl(sel.map((id) => `delete #${id}`).join('\n'), `delete ${sel.length}`).then((r) => r && select([]));
@@ -110,13 +116,18 @@ function Toolbar() {
     return () => window.clearInterval(t);
   }, []);
   const agentActive = now - agentActiveAt < 4000;
+  const role = useEditor((s) => s.role);
+  const presence = useEditor((s) => s.presence);
+  const others = presence.filter((p) => p.clientId !== myClientId);
+  const editable = role === 'owner' || role === 'editor';
 
   return (
     <header className="toolbar">
       <div className="tb-left">
         <span className="brand" aria-hidden>◈</span>
         <span className="doc-name">{name}</span>
-        <div className="menu-wrap">
+        {role !== 'owner' && <span className="role-badge" title="Your access in this session">{role}</span>}
+        {editable && <div className="menu-wrap">
           <button className="btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>Insert ▾</button>
           {menu && (
             <div className="menu" role="menu" onMouseLeave={() => setMenu(false)}>
@@ -125,12 +136,22 @@ function Toolbar() {
               ))}
             </div>
           )}
-        </div>
-        <button className="btn btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => void undo()}>↶</button>
-        <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>
+        </div>}
+        {editable && <button className="btn btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => void undo()}>↶</button>}
+        {editable && <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>}
       </div>
       <div className="tb-right">
         {agentActive && <span className="agent-pill" role="status">Agent editing…</span>}
+        {others.length > 0 && (
+          <div className="presence" aria-label="People in this session">
+            {others.slice(0, 4).map((p) => (
+              <span key={p.clientId} className={`who${p.role === 'agent' ? ' who-agent' : ''}`} title={`${p.name} · ${p.role}${p.selection.length ? ` · on #${p.selection[0]}` : ''}`}>
+                {p.role === 'agent' ? 'Agent' : p.name || p.role}
+              </span>
+            ))}
+            {others.length > 4 && <span className="who">+{others.length - 4}</span>}
+          </div>
+        )}
         <div className="seg" role="radiogroup" aria-label="Color mode">
           <button role="radio" aria-checked={mode === 'light'} className="seg-item" onClick={() => setMode('light')}>Light</button>
           <button role="radio" aria-checked={mode === 'dark'} className="seg-item" onClick={() => setMode('dark')}>Dark</button>
@@ -147,14 +168,14 @@ function Toolbar() {
   );
 }
 
-type RightTab = 'inspect' | 'tokens' | 'lint';
-
 export function App() {
   useShortcuts();
   useEffect(connect, []);
   const toastMsg = useEditor((s) => s.toast);
   const lintCount = useEditor((s) => s.lint.filter((i) => i.severity !== 'P3').length);
-  const [tab, setTab] = useState<RightTab>('inspect');
+  const reviewCount = useEditor((s) => s.reviews.threads.filter((t) => !t.resolved).length + s.reviews.changesets.filter((c) => c.status === 'pending').length);
+  const tab = useEditor((s) => s.rightTab);
+  const setTab = (t: typeof tab) => setRightTab(t);
 
   return (
     <div className="app">
@@ -169,6 +190,9 @@ export function App() {
       <aside className="right">
         <div className="tabs tabs-top" role="tablist">
           <button role="tab" aria-selected={tab === 'inspect'} className="tab" onClick={() => setTab('inspect')}>Inspect</button>
+          <button role="tab" aria-selected={tab === 'review'} className="tab" onClick={() => setTab('review')}>
+            Review{reviewCount > 0 && <span className="count count-info">{reviewCount}</span>}
+          </button>
           <button role="tab" aria-selected={tab === 'tokens'} className="tab" onClick={() => setTab('tokens')}>Tokens</button>
           <button role="tab" aria-selected={tab === 'lint'} className="tab" onClick={() => setTab('lint')}>
             Lint{lintCount > 0 && <span className="count">{lintCount}</span>}
@@ -176,6 +200,7 @@ export function App() {
         </div>
         <div className="panel-body">
           {tab === 'inspect' && <Inspector />}
+          {tab === 'review' && <ReviewPanel />}
           {tab === 'tokens' && <TokensPanel />}
           {tab === 'lint' && <LintPanel />}
         </div>

@@ -1,6 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { renderCss, renderFragment } from '@rangoli/engine';
-import { getState, select, setHover, setZoom, useEditor } from './store';
+import { renderCss, renderFragment, type RangoliDocument } from '@rangoli/engine';
+import { clearCompare, getState, select, setHover, setRightTab, setZoom, useEditor } from './store';
+
+/** Render a document into a shadow root (shared by canvas and compare panes). */
+function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''): void {
+  const frag = renderFragment(doc, { editorAttrs: true });
+  const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
+  root.innerHTML = `<style>${css}
+:host{display:block;background:transparent!important}
+.stage{display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start;padding:64px}
+.stage{width:max-content}
+.stage>[data-rid]{background-clip:padding-box;flex-shrink:0}
+.stage [data-rid]:not([data-play]){animation:none!important}
+${extraCss}</style><div class="stage">${frag.html}</div>`;
+}
+
+interface Pin {
+  id: string;
+  node: string;
+  x: number;
+  y: number;
+  count: number;
+  severity?: string;
+}
 
 interface Box {
   id: string;
@@ -44,28 +66,25 @@ export function Canvas() {
   const selection = useEditor((s) => s.selection);
   const hover = useEditor((s) => s.hover);
   const empty = useEditor((s) => !s.doc || s.doc.page().children.length === 0);
+  const threads = useEditor((s) => s.reviews.threads);
+  const compare = useEditor((s) => s.compare);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
-  const [boxes, setBoxes] = useState<{ sel: Box[]; hover: Box | null }>({ sel: [], hover: null });
+  const [boxes, setBoxes] = useState<{ sel: Box[]; hover: Box | null; pins: Pin[] }>({ sel: [], hover: null, pins: [] });
 
   // render design into shadow DOM
   useLayoutEffect(() => {
     const host = hostRef.current;
     const doc = getState().doc;
     if (!host || !doc) return;
-    const root = (shadowRef.current ??= host.attachShadow({ mode: 'open' }));
+    // re-attach when the host element was remounted (e.g. after closing compare view)
+    if (!shadowRef.current || shadowRef.current.host !== host) shadowRef.current = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+    const root = shadowRef.current;
     liveShadow = root;
-    const frag = renderFragment(doc, { editorAttrs: true });
-    const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
-    root.innerHTML = `<style>${css}
-:host{display:block;background:transparent!important}
-.stage{display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start;padding:64px}
-.stage>[data-rid]{background-clip:padding-box}
-.stage [data-rid]:not([data-play]){animation:none!important}
-</style><div class="stage">${frag.html}</div>`;
-  }, [version]);
+    renderInto(root, doc);
+  }, [version, compare]);
 
   useLayoutEffect(() => {
     if (mode === 'dark') hostRef.current?.setAttribute('data-mode', 'dark');
@@ -86,12 +105,27 @@ export function Canvas() {
       const r = el.getBoundingClientRect();
       return { id, x: r.left - base.left + scroll.scrollLeft, y: r.top - base.top + scroll.scrollTop, w: r.width, h: r.height, label: `${node.name}  ${Math.round(r.width / zoom)}×${Math.round(r.height / zoom)}` };
     };
+    // one pin per node with open threads; review findings show their worst severity
+    const byNode = new Map<string, { ids: string[]; severity?: string }>();
+    for (const t of threads) {
+      if (t.resolved || !t.node) continue;
+      const e = byNode.get(t.node) ?? { ids: [] };
+      e.ids.push(t.id);
+      if (t.kind === 'review' && t.severity && (!e.severity || t.severity < e.severity)) e.severity = t.severity;
+      byNode.set(t.node, e);
+    }
+    const pins: Pin[] = [];
+    for (const [node, e] of byNode) {
+      const b = boxOf(node);
+      if (b) pins.push({ id: e.ids[0]!, node, x: b.x + b.w, y: b.y, count: e.ids.length, severity: e.severity });
+    }
     setBoxes({
       sel: selection.map(boxOf).filter((b): b is Box => !!b),
       hover: hover && !selection.includes(hover) ? boxOf(hover) : null,
+      pins,
     });
   };
-  useLayoutEffect(measure, [version, selection, hover, zoom, mode]);
+  useLayoutEffect(measure, [version, selection, hover, zoom, mode, threads]);
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
@@ -130,7 +164,7 @@ export function Canvas() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [compare]);
 
   const idFromEvent = (e: React.MouseEvent): string | null => {
     for (const t of e.nativeEvent.composedPath()) {
@@ -142,6 +176,8 @@ export function Canvas() {
     }
     return null;
   };
+
+  if (compare) return <CompareView />;
 
   return (
     <div className="canvas" ref={scrollRef} onScroll={measure} data-mode={mode}
@@ -170,6 +206,86 @@ export function Canvas() {
           <span className="ov-label">{b.label}</span>
         </div>
       ))}
+      {boxes.pins.map((p) => (
+        <button key={p.node} className={`pin${p.severity ? ` pin-${p.severity}` : ''}`} style={{ left: p.x - 10, top: p.y - 10 }}
+          aria-label={`${p.count} open ${p.severity ? 'review finding' : 'comment'}${p.count > 1 ? 's' : ''} on #${p.node}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            select([p.node]);
+            setRightTab('review', p.id);
+          }}>
+          {p.count}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Side-by-side before/after with change highlights. */
+function CompareView() {
+  const compare = useEditor((s) => s.compare)!;
+  const mode = useEditor((s) => s.mode);
+  const beforeRef = useRef<HTMLDivElement>(null);
+  const afterRef = useRef<HTMLDivElement>(null);
+  const roots = useRef<{ b?: ShadowRoot; a?: ShadowRoot }>({});
+  const [layout, setLayout] = useState<'side' | 'stacked'>('side');
+  useLayoutEffect(() => {
+    const hl = (ids: string[], color: string) => ids.map((id) => `[data-rid="${id}"]{outline:2px solid ${color}!important;outline-offset:2px}`).join('');
+    const d = compare.diff;
+    const pad = '.stage{padding:24px}';
+    if (beforeRef.current) {
+      const r = (roots.current.b ??= beforeRef.current.shadowRoot ?? beforeRef.current.attachShadow({ mode: 'open' }));
+      renderInto(r, compare.before, pad + hl(d.removed, '#d63c3c') + hl(d.changed.map((c) => c.id), '#d9900f'));
+    }
+    if (afterRef.current) {
+      const r = (roots.current.a ??= afterRef.current.shadowRoot ?? afterRef.current.attachShadow({ mode: 'open' }));
+      renderInto(r, compare.after, pad + hl(d.added, '#2f9e57') + hl(d.changed.map((c) => c.id), '#d9900f'));
+    }
+    for (const el of [beforeRef.current, afterRef.current]) {
+      if (mode === 'dark') el?.setAttribute('data-mode', 'dark');
+      else el?.removeAttribute('data-mode');
+    }
+    // fit each pane to its width so every change is visible (both panes share one scale)
+    const fit = () => {
+      const stages = [roots.current.b, roots.current.a].map((r) => r?.querySelector<HTMLElement>('.stage'));
+      const pane = beforeRef.current?.closest('section');
+      if (!pane || stages.some((s) => !s)) return;
+      const w = Math.max(...stages.map((s) => s!.scrollWidth));
+      const s = Math.min(1, (pane.clientWidth - 8) / w);
+      for (const [i, ref] of [beforeRef, afterRef].entries()) {
+        const wrap = ref.current?.parentElement;
+        const stage = stages[i]!;
+        if (!wrap) continue;
+        wrap.style.transform = `scale(${s})`;
+        wrap.style.width = `${stage.scrollWidth}px`;
+        wrap.style.height = `${stage.scrollHeight}px`;
+        wrap.style.marginBottom = `${-(1 - s) * stage.scrollHeight}px`;
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    const pane = beforeRef.current?.closest('section');
+    if (pane) ro.observe(pane);
+    return () => ro.disconnect();
+  }, [compare, mode, layout]);
+  const d = compare.diff;
+  const summary = [d.added.length && `${d.added.length} added`, d.removed.length && `${d.removed.length} removed`, d.changed.length && `${d.changed.length} changed`, d.tokens && 'tokens', d.motion.length && `${d.motion.length} motion`].filter(Boolean).join(' · ') || 'no differences';
+  return (
+    <div className="canvas compare" data-mode={mode}>
+      <div className="compare-bar">
+        <strong>{compare.label}</strong>
+        <span className="hint">{summary}</span>
+        <span className="legend"><i className="lg-add" /> added <i className="lg-chg" /> changed <i className="lg-rem" /> removed</span>
+        <div className="seg seg-sm" role="radiogroup" aria-label="Compare layout" style={{ marginLeft: 'auto' }}>
+          <button role="radio" aria-checked={layout === 'side'} className="seg-item" onClick={() => setLayout('side')}>Side by side</button>
+          <button role="radio" aria-checked={layout === 'stacked'} className="seg-item" onClick={() => setLayout('stacked')}>Stacked</button>
+        </div>
+        <button className="btn" onClick={clearCompare}>Close compare</button>
+      </div>
+      <div className={`compare-panes${layout === 'stacked' ? ' is-stacked' : ''}`}>
+        <section><h6>Before</h6><div className="compare-scale"><div ref={beforeRef} /></div></section>
+        <section><h6>After</h6><div className="compare-scale"><div ref={afterRef} /></div></section>
+      </div>
     </div>
   );
 }

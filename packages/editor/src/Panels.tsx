@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { contrastRatio, RAMP_STEPS, TokenResolver, wcagLevel } from '@rangoli/engine';
-import { getState, rdl, select, setBrand, useEditor } from './store';
+import { authorLabel, getState, rdl, select, setBrand, useEditor } from './store';
 
 // ------------------------------------------------------------------ tokens
 
@@ -140,7 +140,7 @@ export function Activity() {
     <ol className="activity">
       {items.map((h) => (
         <li key={h.seq} className="act">
-          <span className={`act-who ${h.author.startsWith('agent') ? 'is-agent' : ''}`}>{h.author.startsWith('agent') ? 'Agent' : h.author === 'human' ? 'You' : h.author}</span>
+          <span className={`act-who ${h.author.startsWith('agent') || h.author.includes('accepted agent') ? 'is-agent' : ''}`}>{authorLabel(h.author)}</span>
           <span className="act-what">{h.label ?? `${h.touched} changes`}</span>
           <time className="act-time">{new Date(h.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
         </li>
