@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -228,6 +228,45 @@ Runs col gap6 p6 w960 fill:canvas
     expect(await readFile(join(outDir, 'ClockIcon.tsx'), 'utf8')).toContain('export function ClockIcon(');
     expect(await readFile(join(outDir, 'index.ts'), 'utf8')).toContain("export { RetryIcon } from './RetryIcon';");
   }, 60000);
+
+  it('images: upload, edit to webp, use with alt lint, compose + export, served safely', async () => {
+    // make a real PNG with the tool itself
+    const shot = (await client.callTool({ name: 'render_png', arguments: { roots: ['n1'] } })) as { content: { data: string }[] };
+    const pngPath = join(dir, 'runs-screen.png');
+    await writeFile(pngPath, Buffer.from(shot.content[0]!.data, 'base64'));
+
+    const up = await call('asset_upload', { path: pngPath, name: 'runs-screen.png' });
+    const id = /Asset (\w{12}) "runs-screen.png" (\d+)×(\d+)/.exec(up.text);
+    expect(id).toBeTruthy();
+    const [, assetId, w, h] = id!;
+    expect((await call('asset_upload', { path: join(dir, 'app.rangoli', 'manifest.json') })).isError).toBe(true); // images only
+    // same bytes → same asset (content-addressed)
+    expect((await call('asset_upload', { path: pngPath })).text).toContain(assetId!);
+
+    const edited = (await client.callTool({ name: 'image_edit', arguments: { asset: assetId, ops: [{ op: 'crop', x: 0, y: 0, w: Math.floor(+w! / 2), h: Math.floor(+h! / 2) }, { op: 'resize', w: 300 }], format: 'webp', quality: 80 } })) as { content: { type: string; text?: string }[] };
+    expect(edited.content[0]!.type).toBe('image');
+    const editedId = /New asset (\w{12}) ".*-edit\.webp" 300×\d+/.exec(edited.content[1]!.text!)?.[1];
+    expect(editedId).toBeTruthy();
+    expect((await call('asset_list')).text).toContain(`${editedId} "runs-screen-edit.webp" 300×`);
+
+    const used = await call('rdl_apply', { script: `insert #n1 end\n  Image asset:${editedId} w300 h150 fit:cover` });
+    expect(used.text).toContain('A01'); // no alt
+    const node = /created: #(\w+)/.exec(used.text)![1]!;
+    expect((await call('rdl_apply', { script: `set #${node} alt:"Cropped test runs table"` })).text).not.toContain('A01');
+
+    const tpl = await call('image_template', { kind: 'social-card', title: 'Rangoli' });
+    const frame = /Created #(\w+)/.exec(tpl.text)![1]!;
+    const exp = (await client.callTool({ name: 'image_export', arguments: { frame, format: 'png', scale: 1, saveAsAsset: true, outFile: join(dir, 'og.png') } })) as { content: { type: string; text?: string }[] };
+    expect(exp.content[0]!.type).toBe('image');
+    expect(exp.content[1]!.text).toMatch(/^1200×630 [\d.]+ KB png · → .*og\.png · asset \w{12}$/);
+
+    const meta = Object.values(((await (await fetch(previewUrl + 'api/doc')).json()) as { data: { assets: Record<string, { file: string; id: string }> } }).data.assets).find((a) => a.id === editedId)!;
+    const served = await fetch(previewUrl + 'assets/' + meta.file);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/webp');
+    expect(served.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect((await fetch(previewUrl + 'assets/..%2Fmanifest.json')).status).toBe(404);
+  }, 90000);
 
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));

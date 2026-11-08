@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
@@ -11,6 +11,11 @@ import {
   formatDiff,
   formatLint,
   previewScript,
+  findAsset,
+  formatBytes,
+  IMAGE_TEMPLATES,
+  MIME,
+  type EditOp,
   findIcon,
   iconReact,
   iconSprite,
@@ -37,7 +42,8 @@ import {
   type RNode,
 } from '@rangoli/engine';
 import { INSTRUCTIONS, RDL_HELP } from './guide.js';
-import { filmstrip, renderIcons, renderPng } from './shots.js';
+import { filmstrip, renderIcons, renderPng, setAssetResolver } from './shots.js';
+import { composeImage, editImage, placeholder } from './imaging.js';
 import type { Session } from './session.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
@@ -731,6 +737,116 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
       }
       if (format === 'react') await writeFile(join(outDir, 'index.ts'), icons.map((ic) => `export { ${pascal(ic.name)}Icon } from './${pascal(ic.name)}Icon';`).join('\n') + '\n');
       return text(`Wrote ${icons.length} ${format === 'svg' ? 'SVG files' : 'React components + index.ts'} → ${outDir}`);
+    }),
+  );
+
+  // ---------------------------------------------------------------- images & assets
+  setAssetResolver(session.assetDataUri);
+
+  server.registerTool(
+    'asset_upload',
+    {
+      description: 'Add a local image file (png, jpeg, webp, gif, svg, avif) to the document as an asset — e.g. a screenshot, photo, or an image you produced elsewhere. Returns the asset id to use as  Image asset:<id> w… h… alt:"…".',
+      inputSchema: { path: z.string().describe('absolute path to the image file'), name: z.string().optional(), alt: z.string().optional() },
+    },
+    safe(async ({ path, name, alt }) => {
+      const ext = extname(path).slice(1).toLowerCase();
+      const mime = MIME[ext];
+      if (!mime) throw new Error('Only image files can be uploaded (png, jpeg, webp, gif, svg, avif)');
+      const buf = await readFile(path);
+      const meta = await session.addAsset(buf, mime, name ?? basename(path), { source: 'upload', alt }, author);
+      return text(`Asset ${meta.id} "${meta.name}" ${meta.w}×${meta.h} ${formatBytes(meta.bytes)}\nUse: Image asset:${meta.id} w${Math.min(meta.w, 640)} h${Math.round(Math.min(meta.w, 640) * (meta.h / meta.w))} fit:cover alt:"…"`);
+    }),
+  );
+
+  server.registerTool(
+    'asset_list',
+    { description: 'Image assets: id, name, size, dimensions, source (upload/edit/compose) and alt text.', inputSchema: {} },
+    safe(() => {
+      const list = Object.values(doc.data.assets ?? {});
+      return text(list.length ? list.map((a) => `${a.id} "${a.name}" ${a.w}×${a.h} ${formatBytes(a.bytes)} ${a.source}${a.from ? ` from ${a.from}` : ''}${a.alt ? ` alt:"${a.alt}"` : ''}`).join('\n') : 'No assets yet.');
+    }),
+  );
+
+  server.registerTool(
+    'image_edit',
+    {
+      description: 'Non-destructive image edit → NEW asset (original kept). ops run in order: crop{x,y,w,h} resize{w,h?} rotate{deg:90|180|270} flip{axis:h|v} adjust{brightness,contrast,saturation (1 = unchanged)}. Encode as webp (default), jpeg or png. Returns the result as a picture.',
+      inputSchema: {
+        asset: z.string(),
+        ops: z.array(z.record(z.string(), z.unknown())).describe('e.g. [{"op":"crop","x":0,"y":60,"w":1600,"h":900},{"op":"resize","w":1200}]'),
+        format: z.enum(['webp', 'jpeg', 'png']).optional(),
+        quality: z.number().int().min(30).max(100).optional(),
+        name: z.string().optional(),
+      },
+    },
+    async ({ asset, ops, format, quality, name }) => {
+      try {
+        const meta = findAsset(doc.data.assets, asset);
+        if (!meta) throw new Error(`Unknown asset "${asset}"`);
+        const fmt = format ?? 'webp';
+        const r = await editImage(await session.readAsset(meta), meta.mime, ops as unknown as EditOp[], fmt, quality ?? 82);
+        const out = await session.addAsset(r.buf, `image/${fmt}`, name ?? `${meta.name.replace(/\.\w+$/, '')}-edit.${fmt}`, { source: 'edit', from: meta.id, ops: ops as unknown as EditOp[], format: fmt, quality: quality ?? 82, alt: meta.alt }, author);
+        const thumb = out.w > 640 ? (await editImage(r.buf, `image/${fmt}`, [{ op: 'resize', w: 640 }], 'png')).buf : (await editImage(r.buf, `image/${fmt}`, [], 'png')).buf;
+        return image(thumb, `New asset ${out.id} "${out.name}" ${out.w}×${out.h} ${formatBytes(out.bytes)} (was ${meta.w}×${meta.h} ${formatBytes(meta.bytes)})`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'image_templates',
+    { description: 'Composition templates (social card, empty state, banner). Compositions are ordinary frames with role:image — editable, themeable, linted — exported with image_export.', inputSchema: {} },
+    safe(() => text(Object.entries(IMAGE_TEMPLATES).map(([k, t]) => `${k} — ${t.description}`).join('\n'))),
+  );
+
+  server.registerTool(
+    'image_template',
+    { description: 'Create a composition frame from a template, then edit it with RDL like any frame.', inputSchema: { kind: z.enum(Object.keys(IMAGE_TEMPLATES) as [string, ...string[]]), title: z.string().optional() } },
+    safe(({ kind, title }) => {
+      const r = applyRdl(doc, IMAGE_TEMPLATES[kind]!.rdl(title ?? doc.data.manifest.name), { author, label: `image template ${kind}` });
+      return text(`Created #${r.created[0]} (${IMAGE_TEMPLATES[kind]!.size}). Edit it with rdl_apply, LOOK with render_png roots:["${r.created[0]}"], then image_export.`);
+    }),
+  );
+
+  server.registerTool(
+    'image_export',
+    {
+      description: 'Render a frame (composition) to PNG/WebP/JPEG at 1–3×. Writes outFile and/or saves it as an asset. Returns the image so you can check it.',
+      inputSchema: { frame: z.string(), format: z.enum(['png', 'webp', 'jpeg']).optional(), scale: z.number().int().min(1).max(3).optional(), outFile: z.string().optional(), saveAsAsset: z.boolean().optional() },
+    },
+    async ({ frame, format, scale, outFile, saveAsAsset }) => {
+      try {
+        const fmt = format ?? 'png';
+        const r = await composeImage(doc, frame, fmt, scale ?? 2, session.assetDataUri);
+        const notes: string[] = [`${r.w}×${r.h} ${formatBytes(r.buf.length)} ${fmt}`];
+        if (outFile) {
+          await writeFile(outFile, r.buf);
+          notes.push(`→ ${outFile}`);
+        }
+        if (saveAsAsset) {
+          const name = doc.findNode(frame)?.node.name ?? frame;
+          const meta = await session.addAsset(r.buf, `image/${fmt}`, `${name}@${scale ?? 2}x.${fmt}`, { source: 'compose', from: frame, format: fmt, scale: scale ?? 2 }, author);
+          notes.push(`asset ${meta.id}`);
+        }
+        const preview = r.w > 1200 ? (await editImage(r.buf, `image/${fmt}`, [{ op: 'resize', w: 1200 }], 'png')).buf : fmt === 'png' ? r.buf : (await editImage(r.buf, `image/${fmt}`, [], 'png')).buf;
+        return image(preview, notes.join(' · '));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'image_placeholder',
+    { description: 'Generate a tiny blurred preview (data URI) for an asset — use as a loading background (LQIP).', inputSchema: { asset: z.string() } },
+    safe(async ({ asset }) => {
+      const meta = findAsset(doc.data.assets, asset);
+      if (!meta) throw new Error(`Unknown asset "${asset}"`);
+      const ph = await placeholder(await session.readAsset(meta), meta.mime);
+      doc.apply([{ op: 'setAsset', id: meta.id, meta: { ...meta, placeholder: ph } }], { author, label: `placeholder ${meta.name}` });
+      return text(`${ph.length} chars: ${ph.slice(0, 80)}…`);
     }),
   );
 

@@ -37,7 +37,12 @@ RDL quick reference (one node per line, indentation = children):
       plus cx cy size · path M L H V Q C Z (absolute only)
     Match the set: same stroke (no per-icon stroke), similar optical size, ≤ 8 shapes, no detail < 1 unit.
     Variants for a human to pick: icon drafts/<name>~1 … ~4, then icon_render them together. icon_list / icon_get / icon_export.
-- SEE your work: render_png (screenshot), motion_filmstrip (animation frames), icon_render (icons at sizes + in context). Look before you say "done".
+- images: Image asset:<id> w640 h360 fit:cover alt:"what it shows"   (or decorative) · Image w320 h180 = empty slot placeholder
+    asset_upload (local file) · asset_list · image_edit (crop/resize/rotate/flip/adjust → new webp asset) · image_placeholder
+    compositions = frames with role:image (image_templates / image_template), then image_export → png/webp @2x (+ saveAsAsset)
+    illustration shapes may use fill=true and c=<color token> (e.g. iconset art grid96, circle 48 48 30 fill=true c=primary.100)
+    No AI image generation here: compose from layout, type, icons and shapes, or upload an image you made elsewhere.
+- SEE your work: render_png (screenshot), motion_filmstrip (animation frames), icon_render (icons at sizes + in context), image_export (returns the image). Look before you say "done".
 Rules: use tokens not raw values; one primary action per view; every script is atomic + one undo step.
 Collaboration: check doc_info for agent mode — in "suggest" mode your rdl_apply becomes a suggestion a human approves.
   Use suggest for big/subjective changes anyway. Check inbox for @agent mentions and reply with comment.

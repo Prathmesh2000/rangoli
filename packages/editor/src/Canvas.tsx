@@ -4,7 +4,7 @@ import { clearCompare, getState, select, setHover, setRightTab, setZoom, useEdit
 
 /** Render a document into a shadow root (shared by canvas and compare panes). */
 export function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''): void {
-  const frag = renderFragment(doc, { editorAttrs: true });
+  const frag = renderFragment(doc, { editorAttrs: true, assetBase: '/assets/' });
   const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
   root.innerHTML = `<style>${css}
 :host{display:block;background:transparent!important}

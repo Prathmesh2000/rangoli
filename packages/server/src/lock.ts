@@ -29,17 +29,21 @@ function alive(pid: number): boolean {
   }
 }
 
-/** Returns the live server for this document, verifying it actually answers. */
+/**
+ * Returns the live server for this document. Safety first: if the recorded process is alive we
+ * treat the document as open even when its server is slow to answer — removing a live lock
+ * would let two writers overwrite each other. Only a dead process's lock is cleaned up.
+ */
 export async function findRunning(dir: string): Promise<LockInfo | null> {
   const file = lockPath(dir);
   if (!existsSync(file)) return null;
+  let info: LockInfo;
   try {
-    const info = JSON.parse(readFileSync(file, 'utf8')) as LockInfo;
-    if (!alive(info.pid)) throw new Error('stale');
-    const r = await fetch(`${info.url}api/doc`, { signal: AbortSignal.timeout(1500) });
-    if (!r.ok) throw new Error('not answering');
-    return info;
+    info = JSON.parse(readFileSync(file, 'utf8')) as LockInfo;
   } catch {
+    return null; // being written right now or unreadable — the writer will own it
+  }
+  if (!alive(info.pid)) {
     try {
       unlinkSync(file);
     } catch {
@@ -47,6 +51,16 @@ export async function findRunning(dir: string): Promise<LockInfo | null> {
     }
     return null;
   }
+  // alive: wait (generously) for it to answer so the bridge can connect; still "running" if it doesn't
+  for (const ms of [1500, 4000, 8000]) {
+    try {
+      const r = await fetch(`${info.url}api/doc`, { signal: AbortSignal.timeout(ms) });
+      if (r.ok) return info;
+    } catch {
+      /* slow or busy — try again */
+    }
+  }
+  return info;
 }
 
 export function writeLock(dir: string, url: string): () => void {

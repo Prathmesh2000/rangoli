@@ -2,7 +2,7 @@
  * Let agents SEE: PNG screenshots of the design and animation filmstrips, rendered by the
  * reference renderer in the system's Edge/Chrome (playwright-core, no browser download).
  */
-import { applyRdl, cloneDocument, findIcon, iconSvg, renderCss, renderFragment, resolveTiming, timelineDuration, TokenResolver, type RangoliDocument } from '@rangoli/engine';
+import { applyRdl, cloneDocument, findIcon, iconSvg, renderCss, renderFragment, resolveTiming, timelineDuration, TokenResolver, type AssetMeta, type RangoliDocument } from '@rangoli/engine';
 
 type Browser = { newPage(o: object): Promise<Page>; close(): Promise<void> };
 type Page = {
@@ -15,7 +15,13 @@ type Page = {
 
 let browserP: Promise<Browser> | null = null;
 
-async function browser(): Promise<Browser> {
+/** How screenshots embed image assets (data URIs — headless pages cannot read local files). */
+let assetUrl: ((m: AssetMeta) => string) | undefined;
+export function setAssetResolver(fn: (m: AssetMeta) => string): void {
+  assetUrl = fn;
+}
+
+export async function browser(): Promise<Browser> {
   browserP ??= (async () => {
     let pw: { chromium: { launch(o: object): Promise<Browser> } };
     try {
@@ -42,7 +48,7 @@ export async function closeShots(): Promise<void> {
 }
 
 function page(doc: RangoliDocument, roots: string[] | undefined, mode: string, extraHead = '', body?: string): string {
-  const frag = renderFragment(doc, { roots, editorAttrs: true });
+  const frag = renderFragment(doc, { roots, editorAttrs: true, assetUrl });
   const css = renderCss(doc, frag.css, frag.usedComponents);
   return `<!doctype html><html lang="en"${mode === 'dark' ? ' data-mode="dark"' : ''}><head><meta charset="utf-8"><style>${css}
 body{margin:0;background:var(--color-bg-canvas)}
@@ -85,7 +91,7 @@ export async function renderIcons(doc: RangoliDocument, refs: string[]): Promise
     const r = applyRdl(ctxDoc, `Ctx row gap4 p3 center fill:surface name:"ctx ${full}"\n  @Button variant=secondary size=sm "Action"\n    Icon icon:${full} w16 h16\n  @Chip variant=info "Status"\n    Icon icon:${full} w12 h12\n  Line row gap2 center\n    Icon icon:${full} w16 h16 color:text.secondary\n    Text body-sm "Row label"`);
     ctxRoots.push(r.created[0]!);
   }
-  const frag = renderFragment(ctxDoc, { roots: ctxRoots, editorAttrs: false });
+  const frag = renderFragment(ctxDoc, { roots: ctxRoots, editorAttrs: false, assetUrl });
   const ctxHtml = frag.html.split('\n');
   refs.forEach((ref, i) => {
     const { set, icon } = findIcon(sets, ref)!;
@@ -143,7 +149,7 @@ export async function filmstrip(doc: RangoliDocument, opts: { target: string; tr
   while (rootId && pageNodes[rootId]?.parent) rootId = pageNodes[rootId]!.parent;
   if (!rootId) throw new Error('Nothing to film');
   const times = Array.from({ length: frames }, (_, i) => Math.round((i / (frames - 1)) * ms));
-  const frag = renderFragment(doc, { roots: [rootId], editorAttrs: true });
+  const frag = renderFragment(doc, { roots: [rootId], editorAttrs: true, assetUrl });
   const cells = times.map((t, i) => `<figure class="cell" data-i="${i}"><div class="crop"><div class="inner ${tlClass}">${frag.html}</div></div><figcaption>${t} ms</figcaption></figure>`).join('');
   const html = page(doc, [rootId], opts.mode ?? 'light', `
 #strip{display:inline-flex;gap:12px;padding:12px;background:#e9ecf0}

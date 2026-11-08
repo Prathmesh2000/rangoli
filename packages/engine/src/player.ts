@@ -16,6 +16,8 @@ export interface PlayerOptions {
   /** add a live-reload hook (EventSource on /events) when served by rangoli */
   liveReload?: boolean;
   title?: string;
+  /** where asset files are served from (default "assets/" next to the exported HTML) */
+  assetBase?: string;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -44,7 +46,7 @@ export function prototypeHtml(doc: RangoliDocument, opts: PlayerOptions = {}): s
   let css = '';
   const used = new Set<string>();
   const sections = screens.map((id) => {
-    const f = renderFragment(doc, { roots: [id], editorAttrs: true });
+    const f = renderFragment(doc, { roots: [id], editorAttrs: true, assetBase: opts.assetBase });
     css += f.css + '\n';
     f.usedComponents.forEach((c) => used.add(c));
     const n = page.nodes[id]!;

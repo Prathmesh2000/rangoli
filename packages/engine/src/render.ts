@@ -8,6 +8,7 @@ import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, ty
 import { cssVarName, TokenResolver, tokensToCss } from './tokens.js';
 import { motionCss } from './motion.js';
 import { compileIcon, findIcon } from './icons.js';
+import type { AssetMeta } from './images.js';
 
 export interface RenderOptions {
   page?: string;
@@ -16,6 +17,10 @@ export interface RenderOptions {
   mode?: string;
   /** add data-rid attributes for editor hit-testing */
   editorAttrs?: boolean;
+  /** URL prefix for asset files (default "assets/" — relative, for exported folders) */
+  assetBase?: string;
+  /** full control over asset URLs (e.g. data URIs for screenshots) */
+  assetUrl?: (meta: AssetMeta) => string;
 }
 
 export interface RenderResult {
@@ -102,7 +107,14 @@ class Renderer {
       attrs.push(`viewBox="0 0 ${grid} ${grid}"`, 'aria-hidden="true"', 'xmlns="http://www.w3.org/2000/svg"', 'fill="none"', 'stroke="currentColor"');
       if (found) {
         attrs.push(`stroke-width="${found.icon.stroke ?? found.set.stroke}"`, `stroke-linecap="${found.set.cap}"`, `stroke-linejoin="${found.set.join}"`);
-        inner = compileIcon(found.icon.src).shapes.map((s) => (s.fill ? `<path d="${s.d}" fill="currentColor" stroke="none"/>` : `<path d="${s.d}"/>`)).join('');
+        inner = compileIcon(found.icon.src)
+          .shapes.map((s) => {
+            // per-shape colour tokens (illustrations): c=primary.600
+            const tok = s.color ? this.tokens.find(s.color, 'color') : undefined;
+            const col = tok ? `var(${cssVarName(tok)})` : s.color?.startsWith('#') ? s.color : 'currentColor';
+            return s.fill ? `<path d="${s.d}" fill="${col}" stroke="none"/>` : `<path d="${s.d}"${col !== 'currentColor' ? ` stroke="${col}"` : ''}/>`;
+          })
+          .join('');
       }
       if (!size?.w) decls.push('width:20px');
       if (!size?.h) decls.push('height:20px');
@@ -118,10 +130,22 @@ class Renderer {
           return `<path d="${esc(p.d)}" fill="${fill}" stroke="${stroke}"${p.strokeWidth ? ` stroke-width="${p.strokeWidth}"` : ''}${p.cap ? ` stroke-linecap="${p.cap}"` : ''}${p.join ? ` stroke-linejoin="${p.join}"` : ''}/>`;
         })
         .join('');
-    } else if (n.type === 'image' && n.image) {
-      tag = 'img';
-      attrs.push(`src="assets/${esc(n.image.asset)}"`, `alt="${esc(n.image.alt ?? '')}"`);
-      decls.push(`object-fit:${n.image.fit ?? 'cover'}`);
+    } else if (n.type === 'image') {
+      const meta = n.image?.asset ? this.doc.data.assets?.[n.image.asset] : undefined;
+      if (meta) {
+        tag = 'img';
+        const src = this.opts.assetUrl ? this.opts.assetUrl(meta) : `${this.opts.assetBase ?? 'assets/'}${meta.file}`;
+        attrs.push(`src="${esc(src)}"`, `alt="${esc(n.image?.decorative ? '' : n.image?.alt ?? '')}"`, `width="${meta.w}"`, `height="${meta.h}"`, 'loading="lazy"', 'decoding="async"');
+        decls.push(`object-fit:${n.image?.fit ?? 'cover'}`, 'display:block');
+        if (!size?.w) decls.push(`width:${meta.w}px`);
+        if (!size?.h) decls.push('height:auto');
+      } else {
+        // image slot without a file yet — a neutral placeholder, never a broken <img>
+        attrs.push('role="img"', `aria-label="${esc(n.image?.alt ?? 'Image placeholder')}"`);
+        decls.push(`background:var(${cssVarName('color.bg.subtle')})`, `box-shadow:inset 0 0 0 1px var(${cssVarName('color.border.default')})`);
+        if (!size?.w) decls.push('width:160px');
+        if (!size?.h) decls.push('height:120px');
+      }
     }
 
     const childInline = inInline || tag === 'button' || tag === 'span' || tag === 'a';

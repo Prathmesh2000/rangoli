@@ -103,6 +103,8 @@ export interface ImageRef {
   asset: string;
   fit?: 'cover' | 'contain' | 'fill';
   alt?: string;
+  /** purely decorative: empty alt, hidden from assistive tech */
+  decorative?: boolean;
 }
 
 export interface RNode {
@@ -174,9 +176,12 @@ export interface DocumentData {
   timelines?: Record<string, Timeline>;
   /** icon sets (shape-language source), keyed by set name */
   icons?: Record<string, IconSet>;
+  /** image assets (files live in <doc>/assets/), keyed by id */
+  assets?: Record<string, AssetMeta>;
 }
 
 import type { IconSet } from './icons.js';
+import type { AssetMeta } from './images.js';
 import type { MotionDef } from './motion.js';
 import type { PrototypeData, Timeline } from './prototype.js';
 

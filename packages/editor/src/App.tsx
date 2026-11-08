@@ -6,6 +6,7 @@ import { Inspector } from './Inspector';
 import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
 import { IconStudio } from './IconStudio';
+import { ImageStudio } from './ImageStudio';
 import { ReviewPanel } from './ReviewPanel';
 import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId } from './store';
 
@@ -47,7 +48,7 @@ function useShortcuts() {
       if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); requestFit(); return; }
       if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(s.zoom * 1.2); return; }
       if (mod && e.key === '-') { e.preventDefault(); setZoom(s.zoom / 1.2); return; }
-      if (!doc || s.view === 'icons') return;
+      if (!doc || s.view !== 'design') return;
       if (!canEdit()) {
         // viewers/reviewers: navigation only
         if (e.key === 'Escape') select([]);
@@ -132,6 +133,7 @@ function Toolbar() {
         <div className="seg" role="radiogroup" aria-label="Workspace">
           <button role="radio" aria-checked={view === 'design'} className="seg-item" onClick={() => setView('design')}>Design</button>
           <button role="radio" aria-checked={view === 'icons'} className="seg-item" onClick={() => setView('icons')}>Icons</button>
+          <button role="radio" aria-checked={view === 'images'} className="seg-item" onClick={() => setView('images')}>Images</button>
         </div>
         {editable && <div className="menu-wrap">
           <button className="btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>Insert ▾</button>
@@ -187,11 +189,11 @@ export function App() {
   const setTab = (t: typeof tab) => setRightTab(t);
 
   const view = useEditor((s) => s.view);
-  if (view === 'icons') {
+  if (view !== 'design') {
     return (
       <div className="app">
         <Toolbar />
-        <IconStudio />
+        {view === 'icons' ? <IconStudio /> : <ImageStudio />}
         {toastMsg && <div className={`toast toast-${toastMsg.kind}`} role="alert">{toastMsg.text}</div>}
       </div>
     );

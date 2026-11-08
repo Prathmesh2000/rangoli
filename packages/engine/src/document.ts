@@ -3,6 +3,7 @@ import type { ComponentDef, DocumentData, Page, RNode, TokenTree } from './model
 import type { MotionDef } from './motion.js';
 import type { Interaction, Timeline } from './prototype.js';
 import type { IconDef, IconSet } from './icons.js';
+import type { AssetMeta } from './images.js';
 
 /** Atomic edit operations. Every op is reversible. */
 export type Op =
@@ -20,6 +21,7 @@ export type Op =
   | { op: 'setTimeline'; name: string; def: Timeline | null }
   | { op: 'setIconSet'; name: string; def: IconSet | null }
   | { op: 'setIcon'; set: string; name: string; icon: IconDef | null }
+  | { op: 'setAsset'; id: string; meta: AssetMeta | null }
   /** internal: restore a deleted subtree exactly */
   | { op: 'restore'; page: string; nodes: RNode[]; parent?: string; index: number };
 
@@ -375,6 +377,14 @@ export class RangoliDocument {
         else delete set.icons[op.name];
         touched.add(`$icon:${op.set}/${op.name}`);
         return [{ op: 'setIcon', set: op.set, name: op.name, icon: prev ? clone(prev) : null }];
+      }
+      case 'setAsset': {
+        const assets = (this.data.assets ??= {});
+        const prev = assets[op.id];
+        if (op.meta) assets[op.id] = clone(op.meta);
+        else delete assets[op.id];
+        touched.add(`$asset:${op.id}`);
+        return [{ op: 'setAsset', id: op.id, meta: prev ? clone(prev) : null }];
       }
       case 'deleteComponent': {
         const prev = this.data.components[op.id];

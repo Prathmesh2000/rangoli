@@ -4,7 +4,8 @@
   "children": [
     "n1",
     "np",
-    "n1v"
+    "n1v",
+    "n23"
   ],
   "nodes": {
     "n1": {
@@ -1430,6 +1431,251 @@
       },
       "parent": "n20",
       "children": []
+    },
+    "n23": {
+      "id": "n23",
+      "type": "frame",
+      "name": "Social card",
+      "layout": {
+        "mode": "col",
+        "padding": [
+          {
+            "token": "space.16"
+          },
+          {
+            "token": "space.16"
+          },
+          {
+            "token": "space.16"
+          },
+          {
+            "token": "space.16"
+          }
+        ],
+        "justify": "between"
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 1200
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 630
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.surface"
+          }
+        ]
+      },
+      "role": "image",
+      "children": [
+        "n24",
+        "n28",
+        "n2b"
+      ]
+    },
+    "n24": {
+      "id": "n24",
+      "type": "frame",
+      "name": "Brand",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.3"
+        },
+        "align": "center"
+      },
+      "parent": "n23",
+      "children": [
+        "n25",
+        "n27"
+      ]
+    },
+    "n25": {
+      "id": "n25",
+      "type": "frame",
+      "name": "Mark",
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 44
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 44
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.primary.600"
+          }
+        ],
+        "radius": {
+          "token": "radius.3"
+        }
+      },
+      "layout": {
+        "mode": "col",
+        "align": "center",
+        "justify": "center"
+      },
+      "parent": "n24",
+      "children": [
+        "n26"
+      ]
+    },
+    "n26": {
+      "id": "n26",
+      "type": "vector",
+      "name": "Icon",
+      "icon": "ui/check",
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 28
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 28
+        }
+      },
+      "style": {
+        "color": {
+          "token": "color.white"
+        }
+      },
+      "parent": "n25"
+    },
+    "n27": {
+      "id": "n27",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "font": {
+          "size": 30,
+          "lineHeight": 1.15,
+          "weight": 600
+        }
+      },
+      "text": "Test Management",
+      "parent": "n24"
+    },
+    "n28": {
+      "id": "n28",
+      "type": "frame",
+      "name": "Body",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.5"
+        }
+      },
+      "size": {
+        "maxW": 960
+      },
+      "parent": "n23",
+      "children": [
+        "n29",
+        "n2a"
+      ]
+    },
+    "n29": {
+      "id": "n29",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "font": {
+          "size": 68,
+          "lineHeight": 1.15,
+          "weight": 700
+        }
+      },
+      "text": "Catch flaky tests before your users do.",
+      "parent": "n28"
+    },
+    "n2a": {
+      "id": "n2a",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "font": {
+          "size": 30,
+          "lineHeight": 1.15
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "text": "Runs, suites and results — in one calm place.",
+      "parent": "n28"
+    },
+    "n2b": {
+      "id": "n2b",
+      "type": "frame",
+      "name": "Footer",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.3"
+        },
+        "align": "center"
+      },
+      "parent": "n23",
+      "children": [
+        "n2c",
+        "n2d"
+      ]
+    },
+    "n2c": {
+      "id": "n2c",
+      "type": "frame",
+      "name": "Line",
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 48
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 4
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.primary.600"
+          }
+        ],
+        "radius": {
+          "token": "radius.full"
+        }
+      },
+      "layout": {
+        "mode": "col"
+      },
+      "parent": "n2b",
+      "children": []
+    },
+    "n2d": {
+      "id": "n2d",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "font": {
+          "size": 24,
+          "lineHeight": 1.15
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "text": "yourcompany.com",
+      "parent": "n2b"
     }
   }
 }

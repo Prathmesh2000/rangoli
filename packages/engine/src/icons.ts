@@ -31,6 +31,8 @@ export interface IconSet {
 export interface CompiledShape {
   d: string;
   fill: boolean;
+  /** optional colour token / hex (illustrations); icons normally use currentColor */
+  color?: string;
   /** vertices (for lint + editor handles) */
   points: [number, number][];
 }
@@ -135,7 +137,7 @@ export function compileIcon(src: string, diag: Diagnostic[] = [], lineOffset = 0
         break;
       }
       case 'path': {
-        const toks = rest.join(' ').match(/[A-Za-z]|-?\d*\.?\d+/g) ?? [];
+        const toks = args.join(' ').match(/[A-Za-z]|-?\d*\.?\d+/g) ?? [];
         let d = '';
         const points: [number, number][] = [];
         let cmd = '';
@@ -171,6 +173,13 @@ export function compileIcon(src: string, diag: Diagnostic[] = [], lineOffset = 0
       }
       default:
         diag.push({ line, severity: 'error', message: `Unknown shape "${kind}". Use: line polyline polygon rect circle dot arc path check plus` });
+    }
+    // shape options for illustrations: fill=true (closed shapes), c=<color token|#hex>
+    const last = shapes[shapes.length - 1];
+    if (last && shapes.length && ['polygon', 'rect', 'circle', 'path'].includes(kind!) && opts.fill === 'true') last.fill = true;
+    if (last && opts.c) {
+      if (!/^(#[0-9a-fA-F]{3,8}|[\w.-]+)$/.test(opts.c)) diag.push({ line, severity: 'error', message: `c=${opts.c} must be a colour token or #hex` });
+      else last.color = opts.c;
     }
   });
   const all = shapes.flatMap((s) => s.points);

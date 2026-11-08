@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { probe } from './imaging.js';
 import {
+  EXT,
+  type AssetMeta,
   applyRdl,
   cloneDocument,
   createDocument,
@@ -259,6 +262,42 @@ export class Session extends EventEmitter<SessionEvents> {
   presenceList(): Presence[] {
     return [...this.presence.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
+
+  // ---------------------------------------------------------------- assets (content-addressed files)
+
+  assetPath(meta: AssetMeta): string {
+    return join(this.dir, 'assets', meta.file);
+  }
+
+  /** Store bytes once (sha256), register metadata as an undoable change. */
+  async addAsset(buf: Buffer, mime: string, name: string, extra: Partial<AssetMeta> & { source: AssetMeta['source'] }, author: string): Promise<AssetMeta> {
+    const ext = EXT[mime];
+    if (!ext) throw new Error(`Unsupported image type ${mime} (png, jpeg, webp, gif, svg, avif)`);
+    if (buf.length > 15 * 1024 * 1024) throw new Error('Image larger than 15 MB');
+    const id = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    const existing = this.doc.data.assets?.[id];
+    if (existing) return existing;
+    const { w, h } = probe(buf, mime);
+    await mkdir(join(this.dir, 'assets'), { recursive: true });
+    const file = `${id}.${ext}`;
+    if (!existsSync(join(this.dir, 'assets', file))) await writeFile(join(this.dir, 'assets', file), buf);
+    const meta: AssetMeta = { id, name: name.slice(0, 80) || file, file, mime, w, h, bytes: buf.length, time: Date.now(), ...extra };
+    this.doc.apply([{ op: 'setAsset', id, meta }], { author, label: `${extra.source} ${meta.name}` });
+    return meta;
+  }
+
+  async readAsset(meta: AssetMeta): Promise<Buffer> {
+    return readFile(this.assetPath(meta));
+  }
+
+  /** data: URI for screenshots/compose (headless pages cannot fetch local files). */
+  assetDataUri = (meta: AssetMeta): string => {
+    try {
+      return `data:${meta.mime};base64,${readFileSync(this.assetPath(meta)).toString('base64')}`;
+    } catch {
+      return '';
+    }
+  };
 
   createShareToken(role: Exclude<Role, 'owner'>): string {
     const token = randomBytes(18).toString('base64url');

@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { findRunning } from './lock.js';
+import { findRunning, lockPath } from './lock.js';
 import { applyRdl, formatLint, lint, renderDocument, serializeRdl } from '@rangoli/engine';
 import { startPreview } from './http.js';
 import { createMcpServer } from './mcp.js';
@@ -116,7 +116,7 @@ async function main() {
     case 'serve': {
       const running = await findRunning(target);
       if (running) {
-        log(`This document is already open in another Rangoli process: ${running.url}editor/ (pid ${running.pid}).`);
+        log(`This document is already open in another Rangoli process: ${running.url}editor/ (pid ${running.pid}).\nIf that process is gone, delete ${lockPath(target)} and try again.`);
         process.exitCode = 1;
         return;
       }

@@ -12,4 +12,5 @@ export * from './review.js';
 export * from './prototype.js';
 export * from './player.js';
 export * from './icons.js';
+export * from './images.js';
 // Node-only file I/O lives at '@rangoli/engine/io' so the engine bundles cleanly for the browser.

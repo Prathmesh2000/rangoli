@@ -10,6 +10,7 @@ import { TokenResolver } from './tokens.js';
 import { lintMotion } from './motion.js';
 import { timelineDuration } from './prototype.js';
 import { findIcon, lintIcons } from './icons.js';
+import { formatBytes } from './images.js';
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -231,9 +232,29 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     add({ code: m.code, severity: m.severity, node: motionNode, message: `motion ${m.target} ${m.message}` });
   }
 
-  // icon references + icon-set consistency (I*)
+  // icon references + icon-set consistency (I*), image checks (A*)
   for (const { node: n } of doc.walk(roots, page.id)) {
     if (n.icon && !findIcon(doc.data.icons, n.icon)) add({ code: 'D16', severity: 'P0', node: n.id, message: `references missing icon "${n.icon}"` });
+    if (n.type !== 'image' || !n.image?.asset) continue;
+    const meta = doc.data.assets?.[n.image.asset];
+    if (!meta) {
+      add({ code: 'A05', severity: 'P0', node: n.id, message: `references missing asset "${n.image.asset}"` });
+      continue;
+    }
+    if (!n.image.decorative && !n.image.alt?.trim()) {
+      add({ code: 'A01', severity: 'P1', node: n.id, message: `image "${meta.name}" has no alt text — describe what it shows (alt:"…"), or mark it decorative if it carries no meaning` });
+    }
+    if (meta.bytes > 300 * 1024) {
+      add({ code: 'A02', severity: 'P2', node: n.id, message: `"${meta.name}" is ${formatBytes(meta.bytes)} — convert to WebP (~80 quality) and size it to its display size` });
+    }
+    const w = n.size?.w?.kind === 'fixed' && typeof n.size.w.v === 'number' ? n.size.w.v : undefined;
+    const h = n.size?.h?.kind === 'fixed' && typeof n.size.h.v === 'number' ? n.size.h.v : undefined;
+    if (w && meta.w < w) add({ code: 'A03', severity: 'P2', node: n.id, message: `shown at ${w}px wide but the image is only ${meta.w}px — it will look blurry` });
+    else if (w && meta.w < w * 2) add({ code: 'A03', severity: 'P3', node: n.id, message: `${meta.w}px image shown at ${w}px — not sharp on 2× screens (use ≥ ${w * 2}px)` });
+    if (w && h && (n.image.fit ?? 'cover') === 'fill') {
+      const ratio = w / h, src = meta.w / meta.h;
+      if (Math.abs(ratio - src) / src > 0.05) add({ code: 'A04', severity: 'P2', node: n.id, message: `fit:fill stretches a ${meta.w}×${meta.h} image into ${w}×${h} — use fit:cover or crop it`, fix: `set #${n.id} fit:cover` });
+    }
   }
   if (!opts.roots) {
     // only sets actually in use, plus drafts, are worth reporting

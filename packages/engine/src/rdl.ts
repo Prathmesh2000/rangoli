@@ -15,6 +15,7 @@ import { TokenResolver } from './tokens.js';
 import { parseMotionLines, targetKey } from './motion.js';
 import { parseProtoLines, parseTimelineLines } from './prototype.js';
 import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
+import { findAsset } from './images.js';
 
 export interface Diagnostic {
   line: number;
@@ -248,6 +249,7 @@ export interface RdlContext {
   tokens: TokenResolver;
   components: RangoliDocument['data']['components'];
   icons?: RangoliDocument['data']['icons'];
+  assets?: RangoliDocument['data']['assets'];
 }
 
 function lenFrom(group: 'space' | 'radius', v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): Len | undefined {
@@ -339,10 +341,26 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
       }
       continue;
     }
+    // images: asset:<id|name> fit:cover|contain|fill alt:"…" decorative
+    if ((m = /^asset:(.+)$/.exec(f))) {
+      const a = findAsset(ctx.assets, m[1]!);
+      if (!a) diag.push({ line, severity: 'error', message: `Unknown asset "${m[1]}". ${Object.keys(ctx.assets ?? {}).length ? `Known: ${Object.values(ctx.assets ?? {}).slice(0, 20).map((x) => `${x.id} (${x.name})`).join(', ')}` : 'Upload one first (asset_upload).'}` });
+      else {
+        node.type = 'image';
+        node.image = { ...(node.image ?? {}), asset: a.id };
+      }
+      continue;
+    }
+    if ((m = /^fit:(cover|contain|fill)$/.exec(f))) { node.type = 'image'; node.image = { asset: '', ...(node.image ?? {}), fit: m[1] as 'cover' }; continue; }
+    if ((m = /^alt:(.*)$/.exec(f))) { node.type = 'image'; node.image = { asset: '', ...(node.image ?? {}), alt: m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!, decorative: false }; continue; }
+    if (f === 'decorative') { node.type = 'image'; node.image = { asset: '', ...(node.image ?? {}), decorative: true }; delete node.image.alt; continue; }
     if ((m = /^at:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(f))) { node.position = { x: parseFloat(m[1]!), y: parseFloat(m[2]!) }; continue; }
     if ((m = /^align:(left|center|right)$/.exec(f))) { style().textAlign = m[1] as 'left'; continue; }
     if (f === 'muted') { style().color = { token: ctx.tokens.find('text.muted', 'color') ?? 'color.text.muted' }; continue; }
     if (f === 'mono') { style().mono = true; continue; }
+    // type overrides — for composed images/marketing where the app type scale is too small
+    if ((m = /^size:(\d{1,3})$/.exec(f))) { style().font = { ...(style().font ?? {}), size: Number(m[1]), lineHeight: 1.15 }; continue; }
+    if ((m = /^weight:([1-9]00)$/.exec(f))) { style().font = { ...(style().font ?? {}), weight: Number(m[1]) }; continue; }
     if (f === 'truncate') { style().truncate = true; continue; }
     if (f === 'clip') { style().clip = true; continue; }
     if (f === 'hidden') { node.hidden = true; continue; }
@@ -427,7 +445,7 @@ export function compileRdl(doc: RangoliDocument, src: string, opts: CompileOptio
 
 function compileCommands(doc: RangoliDocument, commands: Command[], opts: CompileOptions): CompileResult {
   const errors: Diagnostic[] = [];
-  const ctx: RdlContext = { tokens: new TokenResolver(doc.data.tokens), components: doc.data.components, icons: doc.data.icons };
+  const ctx: RdlContext = { tokens: new TokenResolver(doc.data.tokens), components: doc.data.components, icons: doc.data.icons, assets: doc.data.assets };
   const ops: Op[] = [];
   const created: string[] = [];
   const page = doc.page(opts.page);
@@ -482,7 +500,7 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const copy = structuredClone(node);
         applyFlags(copy, cmd.flags, cmd.text, ctx, cmd.line, errors);
         const patch: Record<string, unknown> = {};
-        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked'] as const) {
+        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked', 'icon', 'image'] as const) {
           if (JSON.stringify(copy[k]) !== JSON.stringify(node[k])) patch[k] = copy[k] ?? null;
         }
         if (Object.keys(patch).length) ops.push({ op: 'update', page: page.id, id: cmd.id, patch: patch as Partial<RNode> });
@@ -790,6 +808,8 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
     if (st.opacity !== undefined) parts.push(`opacity:${st.opacity}`);
     if (st.textAlign) parts.push(`align:${st.textAlign}`);
     if (st.mono) parts.push('mono');
+    if (typeof st.font?.size === 'number') parts.push(`size:${st.font.size}`);
+    if (st.font?.weight) parts.push(`weight:${st.font.weight}`);
     if (st.truncate) parts.push('truncate');
     if (st.clip) parts.push('clip');
   }
@@ -798,6 +818,12 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
     const short = n.icon.split('/')[1]!;
     const f = findIcon(doc.data.icons, short);
     parts.push(`icon:${f && `${f.set.name}/${f.icon.name}` === n.icon ? short : n.icon}`);
+  }
+  if (n.image) {
+    if (n.image.asset) parts.push(`asset:${n.image.asset}`);
+    if (n.image.fit) parts.push(`fit:${n.image.fit}`);
+    if (n.image.decorative) parts.push('decorative');
+    else if (n.image.alt !== undefined) parts.push(`alt:${JSON.stringify(n.image.alt)}`);
   }
   if (n.position) parts.push(`at:${n.position.x},${n.position.y}`);
   if (n.role) parts.push(`role:${n.role}`);

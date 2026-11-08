@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { applyRdl, defaultTokens, formatLint, lint, prototypeHtml, renderDocument, serializeRdl, type ChangeEntry, type Severity } from '@rangoli/engine';
+import { applyRdl, defaultTokens, formatLint, lint, prototypeHtml, renderDocument, serializeRdl, type ChangeEntry, type EditOp, type ImageFormat, type Severity } from '@rangoli/engine';
+import { composeImage, editImage, placeholder } from './imaging.js';
 import { writeLock } from './lock.js';
 import { createMcpServer } from './mcp.js';
 import { PREVIEW_CLIENT } from './preview-client.js';
@@ -49,6 +50,10 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
   return undefined;
 }
 
+const MIME_IMG: Record<string, string> = { png: 'image/png', webp: 'image/webp', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif' };
+/** Safe display/file name: letters, digits, space . _ - only. */
+const cleanFile = (s: unknown) => (typeof s === 'string' ? s.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 80) : '');
+
 const cleanName = (s: unknown) => (typeof s === 'string' ? s.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 32) : '');
 
 export async function startPreview(session: Session, portOrOpts: number | PreviewOptions = 4400, legacyHost?: string): Promise<PreviewServer> {
@@ -76,12 +81,15 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
   session.on('presence', onPresence);
   session.on('mode', onMode);
 
-  const readBody = (req: IncomingMessage) =>
+  const readBody = (req: IncomingMessage, limit = 2e6) =>
     new Promise<string>((res, rej) => {
       let b = '';
       req.on('data', (c: Buffer) => {
         b += c;
-        if (b.length > 2e6) req.destroy();
+        if (b.length > limit) {
+          rej(new Error('Request body too large'));
+          req.destroy();
+        }
       });
       req.on('end', () => res(b));
       req.on('error', rej);
@@ -168,7 +176,80 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
         }
         if (!originOk || !ctype.startsWith('application/json')) return deny(403, 'Cross-origin or non-JSON write rejected');
       }
-      const body = async <T>() => JSON.parse((await readBody(req)) || '{}') as T;
+      const body = async <T>(limit?: number) => JSON.parse((await readBody(req, limit)) || '{}') as T;
+      let m0: RegExpExecArray | null;
+
+      // ---------------- assets & images ----------------
+      if (req.method === 'GET' && (m0 = /^\/assets\/([a-f0-9]{12}\.(png|webp|jpeg|gif|svg|avif))$/.exec(url.pathname))) {
+        const file = join(session.dir, 'assets', m0[1]!);
+        if (!existsSync(file)) return deny(404, 'Not found');
+        res.writeHead(200, {
+          'content-type': MIME_IMG[m0[2]!] ?? 'application/octet-stream',
+          'cache-control': 'public, max-age=31536000, immutable', // content-addressed: never changes
+          // uploaded SVGs must never run script if opened directly
+          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+          'x-content-type-options': 'nosniff',
+        });
+        return void res.end(await readFile(file));
+      }
+      if (url.pathname.startsWith('/api/assets') && req.method === 'POST') {
+        if (!can('editor')) return json(403, { error: 'Only editors can change assets' });
+        try {
+          if (url.pathname === '/api/assets') {
+            const b = await body<{ name?: string; dataUrl?: string; alt?: string }>(22e6);
+            const mm = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(b.dataUrl ?? '');
+            if (!mm) return json(400, { error: 'dataUrl must be a base64 image data URL' });
+            const meta = await session.addAsset(Buffer.from(mm[2]!, 'base64'), mm[1]!, cleanFile(b.name) || 'image', { source: 'upload', alt: b.alt }, author);
+            return json(200, meta);
+          }
+          if ((m0 = /^\/api\/assets\/([a-f0-9]{12})\/(edit|meta|delete|placeholder)$/.exec(url.pathname))) {
+            const meta = session.doc.data.assets?.[m0[1]!];
+            if (!meta) return json(404, { error: 'Asset not found' });
+            if (m0[2] === 'delete') {
+              session.doc.apply([{ op: 'setAsset', id: meta.id, meta: null }], { author, label: `delete asset ${meta.name}` });
+              return json(200, { ok: true });
+            }
+            if (m0[2] === 'meta') {
+              const b = await body<{ name?: string; alt?: string }>();
+              session.doc.apply([{ op: 'setAsset', id: meta.id, meta: { ...meta, ...(b.name ? { name: cleanFile(b.name) } : {}), ...(b.alt !== undefined ? { alt: String(b.alt).slice(0, 300) } : {}) } }], { author, label: `asset ${meta.name}` });
+              return json(200, session.doc.data.assets![meta.id]);
+            }
+            if (m0[2] === 'placeholder') {
+              const ph = await placeholder(await session.readAsset(meta), meta.mime);
+              session.doc.apply([{ op: 'setAsset', id: meta.id, meta: { ...meta, placeholder: ph } }], { author, label: `placeholder ${meta.name}` });
+              return json(200, { placeholder: ph });
+            }
+            const b = await body<{ ops?: EditOp[]; format?: ImageFormat; quality?: number; name?: string }>();
+            const format = b.format ?? 'webp';
+            const r = await editImage(await session.readAsset(meta), meta.mime, b.ops ?? [], format, b.quality ?? 82);
+            const out = await session.addAsset(r.buf, `image/${format}`, cleanFile(b.name) || `${meta.name.replace(/\.\w+$/, '')}-edit.${format}`, { source: 'edit', from: meta.id, ops: b.ops ?? [], format, quality: b.quality ?? 82, alt: meta.alt }, author);
+            return json(200, out);
+          }
+        } catch (e) {
+          return json(400, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      if ((m0 = /^\/api\/compose\/([0-9a-z]+)(\/save)?$/.exec(url.pathname))) {
+        const q = url.searchParams;
+        const save = !!m0[2];
+        if (save && (req.method !== 'POST' || !can('editor'))) return json(403, { error: 'Only editors can save compositions' });
+        try {
+          const b = save ? await body<{ format?: ImageFormat; scale?: number; name?: string }>() : {};
+          const format = (b.format ?? q.get('format') ?? 'png') as ImageFormat;
+          const scale = Math.min(3, Math.max(1, Number(b.scale ?? q.get('scale') ?? 2)));
+          if (!['png', 'webp', 'jpeg'].includes(format)) return json(400, { error: 'format must be png, webp or jpeg' });
+          const r = await composeImage(session.doc, m0[1]!, format, scale, session.assetDataUri);
+          const frameName = session.doc.findNode(m0[1]!)?.node.name ?? m0[1]!;
+          if (!save) {
+            res.writeHead(200, { 'content-type': `image/${format}`, 'content-disposition': `inline; filename="${cleanFile(frameName)}@${scale}x.${format}"`, 'cache-control': 'no-store' });
+            return void res.end(r.buf);
+          }
+          const meta = await session.addAsset(r.buf, `image/${format}`, cleanFile(b.name) || `${cleanFile(frameName)}@${scale}x.${format}`, { source: 'compose', from: m0[1]!, format, scale }, author);
+          return json(200, meta);
+        } catch (e) {
+          return json(400, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
 
       // ---------------- read API ----------------
       if (url.pathname === '/api/doc' && req.method === 'GET') {
@@ -310,12 +391,12 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
 
       // ---------------- preview ----------------
       if (req.method === 'GET' && url.pathname === '/') {
-        const page = renderDocument(session.doc, { editorAttrs: true, mode: url.searchParams.get('mode') ?? 'light' });
+        const page = renderDocument(session.doc, { editorAttrs: true, mode: url.searchParams.get('mode') ?? 'light', assetBase: '/assets/' });
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return void res.end(page.replace('</body>', `${PREVIEW_CLIENT}\n</body>`));
       }
       if (req.method === 'GET' && (url.pathname === '/play' || url.pathname === '/play/')) {
-        const html = prototypeHtml(session.doc, { start: url.searchParams.get('start') ?? undefined, mode: url.searchParams.get('mode') ?? undefined, liveReload: true });
+        const html = prototypeHtml(session.doc, { start: url.searchParams.get('start') ?? undefined, mode: url.searchParams.get('mode') ?? undefined, liveReload: true, assetBase: '/assets/' });
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return void res.end(html);
       }
