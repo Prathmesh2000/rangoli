@@ -261,12 +261,45 @@ function lenFrom(group: 'space' | 'radius', v: string, ctx: RdlContext, line: nu
   return undefined;
 }
 
-function paintFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): Paint | undefined {
+/** Solid colour: #hex(+alpha), token, token~alpha (0–100). */
+function colorFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): TokenRef | { hex: string } | undefined {
   if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return { hex: v.toLowerCase() };
-  const found = ctx.tokens.find(v, 'color');
-  if (found) return { token: found };
-  diag.push({ line, severity: 'error', message: `Unknown color "${v}". Use a color token (e.g. surface, text.secondary, primary.600) or #hex.` });
+  const m = /^(.+?)~(\d{1,3})$/.exec(v);
+  const name = m ? m[1]! : v;
+  if (/^#[0-9a-fA-F]{3,8}$/.test(name) && m) {
+    const a = Math.round((Math.min(100, Number(m[2])) / 100) * 255).toString(16).padStart(2, '0');
+    return { hex: `${name.slice(0, 7).toLowerCase()}${a}` };
+  }
+  const found = ctx.tokens.find(name, 'color');
+  if (found) return m ? { token: found, alpha: Math.min(100, Number(m[2])) } : { token: found };
+  diag.push({ line, severity: 'error', message: `Unknown color "${v}". Use a color token (surface, text.secondary, primary.600), token~40 for opacity, or #hex.` });
   return undefined;
+}
+
+/** Any paint: solid colour or linear(angle, c1[@pos], c2…) / radial(c1, c2…). */
+function paintFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): Paint | undefined {
+  const g = /^(linear|radial)\((.+)\)$/.exec(v);
+  if (!g) return colorFrom(v, ctx, line, diag);
+  const args = g[2]!.split(',').map((s) => s.trim());
+  let angle: number | undefined;
+  if (g[1] === 'linear' && /^-?\d+(deg)?$/.test(args[0] ?? '')) angle = parseInt(args.shift()!, 10);
+  if (args.length < 2) { diag.push({ line, severity: 'error', message: `${g[1]}() needs at least two colours` }); return undefined; }
+  const stops: { at: number; color: TokenRef | { hex: string } }[] = [];
+  args.forEach((a, i) => {
+    const [c, at] = a.split('@');
+    const color = colorFrom(c!, ctx, line, diag);
+    if (color) stops.push({ at: at !== undefined ? Number(at) / 100 : i / (args.length - 1), color });
+  });
+  return { gradient: { type: g[1] as 'linear' | 'radial', angle: angle ?? 180, stops } };
+}
+
+/** Sanitise raw CSS declarations: no urls, imports, expressions, or block syntax. */
+export function sanitizeCss(css: string): string | undefined {
+  const decls = css.split(';').map((d) => d.trim()).filter(Boolean);
+  for (const d of decls) {
+    if (!/^-?[a-z][a-z-]*\s*:\s*[^;{}<>]+$/i.test(d) || /url\(|expression|@import|javascript:|behavior/i.test(d)) return undefined;
+  }
+  return decls.join(';');
 }
 
 const fixed = (v: number): Dim => ({ kind: 'fixed', v });
@@ -314,21 +347,87 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
       if (p) style().fill = [p];
       continue;
     }
-    if ((m = /^stroke:([^/]+)(?:\/(\d+(?:\.\d+)?))?$/.exec(f))) {
+    // stroke:<color>[/<width>][/solid|dashed|dotted][/<sides tblr>]
+    if ((m = /^stroke:([^/]+)(?:\/(\d+(?:\.\d+)?))?(?:\/(solid|dashed|dotted))?(?:\/([tblr]{1,4}))?$/.exec(f))) {
       if (m[1] === 'none') { delete style().stroke; continue; }
       const p = paintFrom(m[1]!, ctx, line, diag);
-      if (p) style().stroke = { paint: p, width: m[2] ? parseFloat(m[2]) : 1, align: 'inside' };
+      if (p) style().stroke = { paint: p, width: m[2] ? parseFloat(m[2]) : 1, align: 'inside', ...(m[3] && m[3] !== 'solid' ? { style: m[3] as 'dashed' } : {}), ...(m[4] ? { sides: m[4] } : {}) };
       continue;
     }
-    if ((m = /^color:(.+)$/.exec(f))) { const p = paintFrom(m[1]!, ctx, line, diag); if (p) style().color = p; continue; }
-    if ((m = /^shadow:(.+)$/.exec(f))) {
-      if (m[1] === 'none') { delete style().shadow; continue; }
-      const path = ctx.tokens.find(m[1]!, 'shadow');
+    if ((m = /^color:(.+)$/.exec(f))) { const p = colorFrom(m[1]!, ctx, line, diag); if (p) style().color = p; continue; }
+    // shadow:<token> | shadow:x,y,blur,spread,color[,inset] | shadow+:… appends | shadow:none
+    if ((m = /^shadow(\+?):(.+)$/.exec(f))) {
+      if (m[2] === 'none') { delete style().shadow; continue; }
+      const parts = m[2]!.split(',');
+      if (parts.length >= 4) {
+        const [x, y, blur, spread, color = 'neutral.900~16', inset] = parts;
+        const c = colorFrom(color, ctx, line, diag);
+        if (!c || [x, y, blur, spread].some((n) => !/^-?\d+(\.\d+)?$/.test(n!))) { diag.push({ line, severity: 'error', message: 'shadow:x,y,blur,spread,color[,inset] — numbers in px, e.g. shadow:0,8,24,-4,neutral.900~20' }); continue; }
+        const sh = { x: +x!, y: +y!, blur: +blur!, spread: +spread!, color: c, ...(inset === 'inset' ? { inset: true } : {}) };
+        const prev = style().shadow;
+        style().shadow = m[1] && Array.isArray(prev) ? [...prev, sh] : [sh];
+        continue;
+      }
+      const path = ctx.tokens.find(m[2]!, 'shadow');
       if (path) style().shadow = { token: path };
-      else diag.push({ line, severity: 'error', message: `Unknown shadow "${m[1]}" (try ${ctx.tokens.group('shadow').map((t) => t.path.split('.').pop()).join(', ')})` });
+      else diag.push({ line, severity: 'error', message: `Unknown shadow "${m[2]}" (try ${ctx.tokens.group('shadow').map((t) => t.path.split('.').pop()).join(', ')} or x,y,blur,spread,color)` });
       continue;
     }
     if ((m = /^opacity:(\d*\.?\d+)$/.exec(f))) { style().opacity = parseFloat(m[1]!); continue; }
+    // per-corner radius r:tl,tr,br,bl (px or radius steps)
+    if ((m = /^r:([\w.]+),([\w.]+),([\w.]+),([\w.]+)$/.exec(f))) {
+      const vals = [m[1], m[2], m[3], m[4]].map((x) => (/^\d+(\.\d+)?$/.test(x!) ? Number(x) : lenFrom('radius', x!, ctx, line, diag)));
+      if (vals.every((x) => x !== undefined)) style().radius = vals as [Len, Len, Len, Len];
+      continue;
+    }
+    // typography
+    if ((m = /^font:(.+)$/.exec(f))) {
+      const v = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!;
+      const tok = ctx.tokens.find(v, 'font.family');
+      style().font = { ...(style().font ?? {}), family: tok ? `var(--${tok.replace(/\./g, '-')})` : /^[\w\s,'-]+$/.test(v) ? v : 'inherit' };
+      continue;
+    }
+    if ((m = /^lh:(\d+(?:\.\d+)?)$/.exec(f))) { style().font = { ...(style().font ?? {}), lineHeight: Number(m[1]) }; continue; }
+    if ((m = /^ls:(-?\d*\.?\d+)(em|px)?$/.exec(f))) { style().font = { ...(style().font ?? {}), letterSpacing: `${m[1]}${m[2] ?? 'px'}` }; continue; }
+    if (f === 'italic') { style().italic = true; continue; }
+    if (f === 'underline' || f === 'strike' || f === 'nodecoration') { style().decoration = f === 'underline' ? 'underline' : f === 'strike' ? 'line-through' : 'none'; continue; }
+    if (f === 'upper' || f === 'lower' || f === 'capitalize') { style().textTransform = f === 'upper' ? 'uppercase' : f === 'lower' ? 'lowercase' : 'capitalize'; continue; }
+    // effects & placement
+    if ((m = /^blur:(\d+(?:\.\d+)?)$/.exec(f))) { style().blur = Number(m[1]); continue; }
+    if ((m = /^bgblur:(\d+(?:\.\d+)?)$/.exec(f))) { style().backdropBlur = Number(m[1]); continue; }
+    if ((m = /^blend:(multiply|screen|overlay|darken|lighten|color-dodge|color-burn|soft-light|hard-light|difference|exclusion|luminosity|color|hue|saturation)$/.exec(f))) { style().blend = m[1]; continue; }
+    if ((m = /^rotate:(-?\d+(?:\.\d+)?)$/.exec(f))) { style().rotate = Number(m[1]); continue; }
+    if ((m = /^z:(-?\d+)$/.exec(f))) { style().z = Number(m[1]); continue; }
+    if ((m = /^overflow:(hidden|auto|scroll|visible)$/.exec(f))) { style().overflow = m[1] as 'hidden'; continue; }
+    if ((m = /^cursor:(pointer|default|text|move|grab|not-allowed|help)$/.exec(f))) { style().cursor = m[1]; continue; }
+    if ((m = /^ratio:(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(f))) { style().aspect = `${m[1]}/${m[2]}`; continue; }
+    if (f === 'abs') { node.absolute = true; node.position ??= { x: 0, y: 0 }; continue; }
+    if ((m = /^css:(.+)$/.exec(f))) {
+      const raw = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!;
+      const clean = sanitizeCss(raw);
+      if (clean === undefined) diag.push({ line, severity: 'error', message: 'css: only plain declarations are allowed (no url(), @import, expressions or braces)' });
+      else style().css = clean;
+      continue;
+    }
+    // drawing: d:"<svg path>" (pen tool output) or shapes:"<shape language, | separated>"
+    if ((m = /^(d|shapes):(.+)$/.exec(f))) {
+      const raw = m[2]!.startsWith('"') ? unquote(m[2]!) : m[2]!;
+      node.type = 'vector';
+      // coordinate box: explicit vb:, else the node's fixed size, else 24
+      const fixedPx = (dm?: Dim) => (dm?.kind === 'fixed' && typeof dm.v === 'number' ? dm.v : undefined);
+      const vw = node.vector?.vw ?? fixedPx(node.size?.w) ?? 24, vh = node.vector?.vh ?? fixedPx(node.size?.h) ?? 24;
+      if (m[1] === 'd') {
+        if (!/^[MLHVCSQTAZmlhvcsqtaz0-9.,\s-]+$/.test(raw) || !/^\s*[Mm]/.test(raw)) { diag.push({ line, severity: 'error', message: 'd: must be SVG path data starting with M (commands M L H V C S Q T A Z)' }); continue; }
+        node.vector = { ...(node.vector ?? {}), vw, vh, paths: [...(node.vector?.paths ?? []), { d: raw.trim() }] };
+      } else {
+        const sd: Diagnostic[] = [];
+        const c = compileIcon(raw.split('|').join('\n'), sd);
+        for (const d of sd) diag.push({ ...d, line });
+        node.vector = { vw, vh, shapes: node.vector?.shapes ? `${node.vector.shapes}|${raw}` : raw, paths: [...(node.vector?.paths ?? []), ...c.shapes.map((s) => ({ d: s.d, fromShapes: true, ...(s.fill ? { filled: true } : {}), ...(s.color ? { color: s.color } : {}) }))] };
+      }
+      continue;
+    }
+    if ((m = /^vb:(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/.exec(f))) { node.type = 'vector'; node.vector = { ...(node.vector ?? { paths: [] }), vw: Number(m[1]), vh: Number(m[2]) }; continue; }
     if ((m = /^role:(.+)$/.exec(f))) { node.role = m[1]; continue; }
     if ((m = /^name:(.+)$/.exec(f))) { node.name = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!; continue; }
     if ((m = /^icon:([\w-]+(?:\/[\w~.-]+)?)$/.exec(f))) {
@@ -356,7 +455,7 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if ((m = /^alt:(.*)$/.exec(f))) { node.type = 'image'; node.image = { asset: '', ...(node.image ?? {}), alt: m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!, decorative: false }; continue; }
     if (f === 'decorative') { node.type = 'image'; node.image = { asset: '', ...(node.image ?? {}), decorative: true }; delete node.image.alt; continue; }
     if ((m = /^at:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(f))) { node.position = { x: parseFloat(m[1]!), y: parseFloat(m[2]!) }; continue; }
-    if ((m = /^align:(left|center|right)$/.exec(f))) { style().textAlign = m[1] as 'left'; continue; }
+    if ((m = /^align:(left|center|right|justify)$/.exec(f))) { style().textAlign = m[1] as 'left'; continue; }
     if (f === 'muted') { style().color = { token: ctx.tokens.find('text.muted', 'color') ?? 'color.text.muted' }; continue; }
     if (f === 'mono') { style().mono = true; continue; }
     // type overrides — for composed images/marketing where the app type scale is too small
@@ -501,7 +600,7 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const copy = structuredClone(node);
         applyFlags(copy, cmd.flags, cmd.text, ctx, cmd.line, errors);
         const patch: Record<string, unknown> = {};
-        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked', 'icon', 'image'] as const) {
+        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked', 'icon', 'image', 'absolute', 'vector'] as const) {
           if (JSON.stringify(copy[k]) !== JSON.stringify(node[k])) patch[k] = copy[k] ?? null;
         }
         if (Object.keys(patch).length) ops.push({ op: 'update', page: page.id, id: cmd.id, patch: patch as Partial<RNode> });
@@ -743,10 +842,15 @@ function lenStr(v: Len, group: string): string {
 }
 
 function paintStr(p: Paint, tokens: TokenResolver): string {
-  if (isTokenRef(p)) return tokens.shortName(p.token, 'color');
+  if (isTokenRef(p)) return `${tokens.shortName(p.token, 'color')}${p.alpha !== undefined ? `~${p.alpha}` : ''}`;
   if ('hex' in p) return p.hex;
-  return 'gradient';
+  const g = p.gradient;
+  const stops = g.stops.map((s, i) => `${paintStr(s.color, tokens)}${Math.abs(s.at - i / (g.stops.length - 1)) > 0.001 ? `@${Math.round(s.at * 100)}` : ''}`);
+  return g.type === 'linear' ? `linear(${g.angle ?? 180},${stops.join(',')})` : `radial(${stops.join(',')})`;
 }
+
+const radiusStr = (v: Len) => (isTokenRef(v) ? v.token.replace(/^radius\./, '') : String(v));
+const q = (s: string) => (/^[\w#~.,()@/%-]+$/.test(s) ? s : JSON.stringify(s));
 
 export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument): string {
   const parts: string[] = [];
@@ -799,9 +903,14 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
   if (st) {
     if (st.textStyle) parts.push(st.textStyle.token.replace(/^textStyle\./, ''));
     if (st.fill) parts.push(st.fill.length ? `fill:${paintStr(st.fill[0]!, tokens)}` : 'fill:none');
-    if (st.stroke) parts.push(`stroke:${paintStr(st.stroke.paint, tokens)}${st.stroke.width && st.stroke.width !== 1 ? `/${st.stroke.width}` : ''}`);
-    if (st.radius !== undefined && !Array.isArray(st.radius)) parts.push(`r${lenStr(st.radius, 'radius')}`);
+    if (st.stroke) {
+      const sk = st.stroke;
+      const extra = sk.sides || (sk.style && sk.style !== 'solid');
+      parts.push(`stroke:${paintStr(sk.paint, tokens)}${(sk.width && sk.width !== 1) || extra ? `/${sk.width ?? 1}` : ''}${extra ? `/${sk.style ?? 'solid'}` : ''}${sk.sides ? `/${sk.sides}` : ''}`);
+    }
+    if (st.radius !== undefined) parts.push(Array.isArray(st.radius) ? `r:${st.radius.map(radiusStr).join(',')}` : `r${lenStr(st.radius, 'radius')}`);
     if (st.shadow && isTokenRef(st.shadow)) parts.push(`shadow:${st.shadow.token.replace(/^shadow\./, '')}`);
+    else if (Array.isArray(st.shadow)) st.shadow.forEach((sh, i) => parts.push(`shadow${i ? '+' : ''}:${sh.x},${sh.y},${sh.blur},${sh.spread ?? 0},${paintStr(sh.color, tokens)}${sh.inset ? ',inset' : ''}`));
     if (st.color) {
       const c = paintStr(st.color, tokens);
       parts.push(c === 'muted' || (isTokenRef(st.color) && st.color.token === 'color.text.muted') ? 'muted' : `color:${c}`);
@@ -811,9 +920,35 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
     if (st.mono) parts.push('mono');
     if (typeof st.font?.size === 'number') parts.push(`size:${st.font.size}`);
     if (st.font?.weight) parts.push(`weight:${st.font.weight}`);
+    if (st.font?.family) {
+      const fam = st.font.family;
+      const tokenFam = /^var\(--font-family-([\w-]+)\)$/.exec(fam);
+      parts.push(`font:${tokenFam ? tokenFam[1] : q(fam)}`);
+    }
+    if (st.font?.lineHeight !== undefined && !(typeof st.font.size === 'number' && st.font.lineHeight === 1.15)) parts.push(`lh:${st.font.lineHeight}`);
+    if (st.font?.letterSpacing !== undefined) parts.push(`ls:${st.font.letterSpacing}`);
+    if (st.italic) parts.push('italic');
+    if (st.decoration) parts.push(st.decoration === 'underline' ? 'underline' : st.decoration === 'line-through' ? 'strike' : 'nodecoration');
+    if (st.textTransform && st.textTransform !== 'none') parts.push(st.textTransform === 'uppercase' ? 'upper' : st.textTransform === 'lowercase' ? 'lower' : 'capitalize');
     if (st.truncate) parts.push('truncate');
     if (st.clip) parts.push('clip');
+    if (st.blur) parts.push(`blur:${st.blur}`);
+    if (st.backdropBlur) parts.push(`bgblur:${st.backdropBlur}`);
+    if (st.blend) parts.push(`blend:${st.blend}`);
+    if (st.rotate) parts.push(`rotate:${st.rotate}`);
+    if (st.z !== undefined) parts.push(`z:${st.z}`);
+    if (st.overflow) parts.push(`overflow:${st.overflow}`);
+    if (st.cursor) parts.push(`cursor:${st.cursor}`);
+    if (st.aspect) parts.push(`ratio:${st.aspect}`);
+    if (st.css) parts.push(`css:${JSON.stringify(st.css)}`);
   }
+  if (n.type === 'vector' && n.vector && !n.icon) {
+    const v = n.vector;
+    parts.push(`vb:${v.vw},${v.vh}`);
+    if (v.shapes) parts.push(`shapes:${JSON.stringify(v.shapes)}`);
+    for (const p of v.paths) if (!p.fromShapes) parts.push(`d:${JSON.stringify(p.d)}`);
+  }
+  if (n.absolute) parts.push('abs');
   if (n.icon) {
     // short name when unambiguous
     const short = n.icon.split('/')[1]!;

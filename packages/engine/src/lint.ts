@@ -2,7 +2,7 @@
  * Deterministic design linter. Same input → same output. No AI.
  * Codes: D01–D15 (design). Motion rules M01–M14 arrive with the motion engine (Phase 2).
  */
-import { contrastRatio, deltaE } from './color.js';
+import { contrastRatio, deltaE, hexToRgb, rgbToHex } from './color.js';
 import { resolveInstance } from './components.js';
 import type { RangoliDocument } from './document.js';
 import { isTokenRef, type Len, type Paint, type RNode, type Style } from './model.js';
@@ -50,40 +50,52 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     return n.style ?? {};
   };
 
-  const paintHex = (p: Paint | undefined, mode: string): string | undefined => {
-    if (!p) return undefined;
-    if (isTokenRef(p)) {
-      const v = tokens.resolve(p.token, mode);
-      return typeof v === 'string' && v.startsWith('#') ? v : undefined;
-    }
-    if ('hex' in p) return p.hex;
-    return undefined;
+  type Tint = { hex: string; alpha: number };
+  /** colours a paint can show: one for solids, every stop for gradients; alpha 0–1 */
+  const paintTints = (p: Paint | undefined, mode: string): Tint[] => {
+    if (!p) return [];
+    const one = (c: Paint): Tint | undefined => {
+      if (isTokenRef(c)) {
+        const v = tokens.resolve(c.token, mode);
+        return typeof v === 'string' && v.startsWith('#') ? { hex: v, alpha: (c.alpha ?? 100) / 100 } : undefined;
+      }
+      if ('hex' in c) return { hex: c.hex, alpha: 1 };
+      return undefined;
+    };
+    if ('gradient' in p) return p.gradient.stops.map((s) => one(s.color)).filter((t): t is Tint => !!t);
+    const t = one(p);
+    return t ? [t] : [];
+  };
+  const blend = (top: Tint, under: string): string => {
+    if (top.alpha >= 1) return top.hex;
+    const a = hexToRgb(top.hex), b = hexToRgb(under);
+    const m = (x: number, y: number) => x * top.alpha + y * (1 - top.alpha);
+    return rgbToHex({ r: m(a.r, b.r), g: m(a.g, b.g), b: m(a.b, b.b) });
   };
 
-  const bgOf = (n: RNode, mode: string): string => {
-    let cur: RNode | undefined = n;
+  /** every opaque colour that can sit behind n (gradient stops, alpha blended over ancestors) */
+  const bgsOf = (n: RNode | undefined, mode: string): string[] => {
+    let cur = n;
     while (cur) {
-      const fill = effective(cur).fill;
-      if (fill?.length) {
-        const hex = paintHex(fill[0], mode);
-        if (hex) return hex;
+      const tints = paintTints(effective(cur).fill?.[0], mode);
+      if (tints.length) {
+        const parent = cur.parent ? page.nodes[cur.parent] : undefined;
+        const under = tints.some((t) => t.alpha < 1) ? bgsOf(parent, mode) : [];
+        return tints.flatMap((t) => (t.alpha >= 1 ? [t.hex] : under.map((u) => blend(t, u))));
       }
       cur = cur.parent ? page.nodes[cur.parent] : undefined;
     }
-    return (tokens.resolve('color.bg.canvas', mode) as string) ?? '#ffffff';
+    return [(tokens.resolve('color.bg.canvas', mode) as string) ?? '#ffffff'];
   };
 
-  const fgOf = (n: RNode, mode: string): string => {
+  const fgOf = (n: RNode, mode: string): Tint => {
     let cur: RNode | undefined = n;
     while (cur) {
-      const c = effective(cur).color;
-      if (c) {
-        const hex = paintHex(c, mode);
-        if (hex) return hex;
-      }
+      const t = paintTints(effective(cur).color, mode)[0];
+      if (t) return t;
       cur = cur.parent ? page.nodes[cur.parent] : undefined;
     }
-    return (tokens.resolve('color.text.primary', mode) as string) ?? '#000000';
+    return { hex: (tokens.resolve('color.text.primary', mode) as string) ?? '#000000', alpha: 1 };
   };
 
   const nearestColorToken = (hex: string): string | undefined => {
@@ -173,7 +185,7 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     if (st.radius !== undefined && (n.type === 'frame' || n.type === 'instance')) radii.add(JSON.stringify(st.radius));
 
     // D04 nested cards
-    const card = n.type === 'frame' && isCardLike(st);
+    const card = n.type === 'frame' && !n.absolute && isCardLike(st); // floating badges/overlays are not nested cards
     if (card && cardDepth > 0) add({ code: 'D04', severity: 'P2', node: n.id, message: 'Card nested inside a card. Use spacing or a divider instead of another box.' });
 
     // text checks
@@ -185,9 +197,14 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
       if (size < 12) add({ code: 'D08', severity: 'P1', node: n.id, message: `Text ${size}px is too small to read comfortably (min 12px)` });
       const large = size >= 24 || (size >= 18.66 && weight >= 700);
       for (const mode of modes) {
-        const fg = fgOf(n, mode);
-        const bg = bgOf(n, mode);
-        const ratio = contrastRatio(fg, bg);
+        const tint = fgOf(n, mode);
+        // worst case across everything that can sit behind the text
+        let fg = tint.hex, bg = '', ratio = Infinity;
+        for (const b of bgsOf(n, mode)) {
+          const f = blend(tint, b);
+          const r = contrastRatio(f, b);
+          if (r < ratio) [ratio, fg, bg] = [r, f, b];
+        }
         const min = large ? 3 : 4.5;
         if (ratio < min) {
           add({ code: 'D03', severity: 'P1', node: n.id, message: `Contrast ${ratio.toFixed(2)}:1 in ${mode} mode (${fg} on ${bg}) is below ${min}:1` });

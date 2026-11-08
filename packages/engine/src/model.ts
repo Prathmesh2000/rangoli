@@ -8,6 +8,8 @@ export type NodeType = 'frame' | 'text' | 'vector' | 'image' | 'instance' | 'gro
 /** Reference to a design token by its dotted path, e.g. "color.text.secondary". */
 export interface TokenRef {
   token: string;
+  /** optional opacity 0–100 for colour tokens (fill:primary.600~40) */
+  alpha?: number;
 }
 
 /** A length: raw px number or a token reference. */
@@ -54,6 +56,9 @@ export interface Stroke {
   paint: Paint;
   width?: number;
   align?: 'inside' | 'center' | 'outside';
+  style?: 'solid' | 'dashed' | 'dotted';
+  /** only some sides, e.g. "b" or "tb" (t r b l) */
+  sides?: string;
 }
 
 export interface Shadow {
@@ -86,9 +91,23 @@ export interface Style {
   textStyle?: TokenRef;
   color?: Paint;
   font?: Partial<Font>;
-  textAlign?: 'left' | 'center' | 'right';
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
   truncate?: boolean;
   mono?: boolean;
+  italic?: boolean;
+  decoration?: 'underline' | 'line-through' | 'none';
+  textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+  /** degrees */
+  rotate?: number;
+  z?: number;
+  overflow?: 'hidden' | 'auto' | 'scroll' | 'visible';
+  cursor?: string;
+  /** backdrop blur px (frosted surfaces) */
+  backdropBlur?: number;
+  /** aspect ratio "16/9" */
+  aspect?: string;
+  /** escape hatch: extra CSS declarations (sanitised), e.g. "filter:grayscale(1)" */
+  css?: string;
 }
 
 export interface VectorData {
@@ -96,7 +115,9 @@ export interface VectorData {
   vw: number;
   vh: number;
   /** SVG path data strings */
-  paths: { d: string; fill?: Paint | 'none'; stroke?: Paint; strokeWidth?: number; cap?: 'round' | 'butt' | 'square'; join?: 'round' | 'miter' | 'bevel' }[];
+  paths: { d: string; fill?: Paint | 'none'; stroke?: Paint; strokeWidth?: number; cap?: 'round' | 'butt' | 'square'; join?: 'round' | 'miter' | 'bevel'; /** filled shape (shape language fill=true) */ filled?: boolean; /** per-path colour token or #hex */ color?: string; /** compiled from the shapes source below */ fromShapes?: boolean }[];
+  /** shape-language source (kept for editing/round-trip), | separated */
+  shapes?: string;
 }
 
 export interface ImageRef {
@@ -128,6 +149,8 @@ export interface RNode {
   variant?: Record<string, string>;
   props?: Record<string, string | number | boolean>;
   hidden?: boolean;
+  /** absolutely positioned inside its parent (uses position x/y) — overlays, badges, drawings */
+  absolute?: boolean;
   locked?: boolean;
   figmaId?: string;
 }

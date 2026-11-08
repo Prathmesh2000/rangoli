@@ -10,6 +10,7 @@ import { motionCss } from './motion.js';
 import { compileIcon, findIcon } from './icons.js';
 import type { AssetMeta } from './images.js';
 import { ANATOMY, COMPONENT_CSS, SHARED_CSS } from './library.js';
+import { sanitizeCss } from './rdl.js';
 
 export interface RenderOptions {
   page?: string;
@@ -40,7 +41,7 @@ export function lenCss(v: Len): string {
 }
 
 export function paintCss(p: Paint): string {
-  if (isTokenRef(p)) return `var(${cssVarName(p.token)})`;
+  if (isTokenRef(p)) return p.alpha !== undefined && p.alpha < 100 ? `color-mix(in srgb, var(${cssVarName(p.token)}) ${p.alpha}%, transparent)` : `var(${cssVarName(p.token)})`;
   if ('hex' in p) return p.hex;
   const g = p.gradient;
   const stops = g.stops.map((s) => `${paintCss(s.color)} ${Math.round(s.at * 100)}%`).join(', ');
@@ -100,8 +101,13 @@ class Renderer {
     if (layout && n.type !== 'text') this.layoutDecls(layout, decls);
     // sizing relative to parent
     this.sizeDecls(size, parentLayout, decls, n.type === 'text');
-    if (parentLayout?.mode === 'none' && n.position) decls.push('position:absolute', `left:${n.position.x}px`, `top:${n.position.y}px`);
-    this.styleDecls(style, decls);
+    if ((parentLayout?.mode === 'none' || n.absolute) && n.position) decls.push('position:absolute', `left:${n.position.x}px`, `top:${n.position.y}px`);
+    // containers with absolutely placed children become the positioning context
+    const pageNodes = this.doc.page(this.opts.page).nodes;
+    if (layout?.mode !== 'none' && n.children?.some((c) => pageNodes[c]?.absolute)) decls.push('position:relative');
+    // vectors paint their paths themselves (fill/stroke go to the SVG, not the box)
+    const vectorPaths = n.type === 'vector' && !!n.vector && !n.icon;
+    this.styleDecls(vectorPaths ? { ...style, fill: undefined, stroke: undefined } : style, decls, !!n.absolute);
 
     if (n.type === 'text') {
       const ts = style.textStyle?.token.replace(/^textStyle\./, '') ?? '';
@@ -131,14 +137,31 @@ class Renderer {
     } else if (n.type === 'vector' && n.vector) {
       const v = n.vector;
       tag = 'svg';
-      attrs.push(`viewBox="0 0 ${v.vw} ${v.vh}"`, 'aria-hidden="true"', 'xmlns="http://www.w3.org/2000/svg"');
+      attrs.push(`viewBox="0 0 ${v.vw} ${v.vh}"`, 'aria-hidden="true"', 'xmlns="http://www.w3.org/2000/svg"', 'overflow="visible"');
+      // a path without its own paint inherits the layer's fill/stroke; bare pen strokes default to currentColor
+      const solid = (p?: Paint) => (!p ? undefined : 'gradient' in p ? paintCss(p.gradient.stops[0]!.color) : paintCss(p));
+      const tokenColor = (c?: string) => {
+        if (!c) return undefined;
+        if (c.startsWith('#')) return c;
+        const t = this.tokens.find(c, 'color');
+        return t ? `var(${cssVarName(t)})` : undefined;
+      };
+      const layerFill = solid(style.fill?.[0]);
+      const layerStroke = style.stroke ? solid(style.stroke.paint) : undefined;
+      const layerWidth = style.stroke?.width ?? 2;
       inner = v.paths
         .map((p) => {
-          const fill = p.fill === 'none' || p.fill === undefined ? 'none' : paintCss(p.fill);
-          const stroke = p.stroke ? paintCss(p.stroke) : 'none';
-          return `<path d="${esc(p.d)}" fill="${fill}" stroke="${stroke}"${p.strokeWidth ? ` stroke-width="${p.strokeWidth}"` : ''}${p.cap ? ` stroke-linecap="${p.cap}"` : ''}${p.join ? ` stroke-linejoin="${p.join}"` : ''}/>`;
+          const own = tokenColor(p.color);
+          const fill = p.fill !== undefined ? (p.fill === 'none' ? 'none' : paintCss(p.fill)) : p.filled ? own ?? 'currentColor' : layerFill ?? 'none';
+          let stroke = p.stroke ? paintCss(p.stroke) : p.filled ? 'none' : own ?? layerStroke ?? (layerFill ? 'none' : 'currentColor');
+          if (p.filled && layerStroke && !own) stroke = layerStroke; // coloured fills keep their own edge
+          const width = p.strokeWidth ?? layerWidth;
+          const dash = style.stroke?.style === 'dashed' ? ` stroke-dasharray="${width * 3} ${width * 2}"` : style.stroke?.style === 'dotted' ? ` stroke-dasharray="0 ${width * 2}"` : '';
+          return `<path d="${esc(p.d)}" fill="${fill}" stroke="${stroke}"${stroke !== 'none' ? ` stroke-width="${width}" stroke-linecap="${p.cap ?? 'round'}" stroke-linejoin="${p.join ?? 'round'}"${dash}` : ''}/>`;
         })
         .join('');
+      if (!size?.w) decls.push(`width:${v.vw}px`);
+      if (!size?.h) decls.push(`height:${v.vh}px`);
     } else if (n.type === 'image') {
       const meta = n.image?.asset ? this.doc.data.assets?.[n.image.asset] : undefined;
       if (meta) {
@@ -226,7 +249,7 @@ class Renderer {
     if (isText && !s?.w && parent?.mode === 'row') d.push('min-width:0');
   }
 
-  styleDecls(s: Style, d: string[]) {
+  styleDecls(s: Style, d: string[], isAbsolute = false) {
     if (s.fill) {
       if (!s.fill.length) d.push('background:transparent');
       else if (s.fill.length === 1) {
@@ -240,8 +263,15 @@ class Renderer {
     const shadows: string[] = [];
     if (s.stroke) {
       const w = s.stroke.width ?? 1;
-      const c = paintCss(s.stroke.paint);
-      if (s.stroke.align === 'outside') d.push(`outline:${w}px solid ${c}`);
+      const p = s.stroke.paint;
+      const c = 'gradient' in p ? paintCss(p.gradient.stops[0]!.color) : paintCss(p);
+      const lineStyle = s.stroke.style ?? 'solid';
+      if (s.stroke.sides || lineStyle !== 'solid') {
+        // real borders for dashed/dotted or single sides (box-sizing keeps size stable)
+        const sides = s.stroke.sides ?? 'trbl';
+        const name: Record<string, string> = { t: 'top', r: 'right', b: 'bottom', l: 'left' };
+        for (const k of sides) d.push(`border-${name[k]}:${w}px ${lineStyle} ${c}`);
+      } else if (s.stroke.align === 'outside') d.push(`outline:${w}px solid ${c}`);
       else if (s.stroke.align === 'center') d.push(`outline:${w}px solid ${c}`, `outline-offset:-${w / 2}px`);
       else shadows.push(`inset 0 0 0 ${w}px ${c}`);
     }
@@ -271,6 +301,19 @@ class Renderer {
     if (s.textAlign) d.push(`text-align:${s.textAlign}`);
     if (s.mono) d.push(`font-family:var(${cssVarName('font.family.mono')})`, 'font-variant-numeric:tabular-nums');
     if (s.truncate) d.push('white-space:nowrap', 'overflow:hidden', 'text-overflow:ellipsis');
+    if (s.italic) d.push('font-style:italic');
+    if (s.decoration) d.push(`text-decoration:${s.decoration}`);
+    if (s.textTransform) d.push(`text-transform:${s.textTransform}`);
+    if (s.rotate) d.push(`rotate:${s.rotate}deg`);
+    if (s.z !== undefined) d.push(`z-index:${s.z}`, ...(isAbsolute ? [] : ['position:relative']));
+    if (s.overflow) d.push(`overflow:${s.overflow}`);
+    if (s.cursor) d.push(`cursor:${s.cursor}`);
+    if (s.backdropBlur) d.push(`backdrop-filter:blur(${s.backdropBlur}px)`, `-webkit-backdrop-filter:blur(${s.backdropBlur}px)`);
+    if (s.aspect) d.push(`aspect-ratio:${s.aspect}`);
+    if (s.css) {
+      const clean = sanitizeCss(s.css); // re-check at render: data may come from anywhere
+      if (clean) d.push(clean);
+    }
   }
 }
 

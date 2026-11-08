@@ -1,0 +1,30 @@
+Showcase col gap6 p8 w960 fill:canvas
+  Hero col gap3 p8 r:24,24,4,4 fill:linear(135,primary.700,primary.900) shadow:0,16,40,-12,primary.900~45 shadow+:0,1,2,0,neutral.900~10 overflow:hidden
+    Eyebrow text caption upper ls:0.12em weight:600 color:white~80 "Release 2.0"
+    Title text size:44 weight:700 lh:1.05 ls:-0.02em color:white "Design anything, token-first"
+    Lede text body color:white~85 "Gradients, alpha, layered shadows, per-corner radius and pen paths — all round-trip through RDL."
+    Sticker row abs at:780,28 p3 rfull fill:warning.400 rotate:-10 shadow:0,6,16,-4,neutral.900~30
+      Text label weight:700 color:neutral.900 "NEW"
+  Cards row gap4
+    Glass col gap2 p5 wfill r4 fill:surface~60 bgblur:16 stroke:border/1
+      Text title-sm "Frosted"
+      Text body-sm muted "fill:surface~60 bgblur:16"
+    Dashed col gap2 p5 wfill r4 stroke:primary.500/2/dashed
+      Text title-sm "Dashed stroke"
+      Text body-sm muted "stroke:primary.500/2/dashed"
+    Side col gap2 p5 wfill fill:surface stroke:primary.600/4/solid/l
+      Text title-sm "Left accent"
+      Text body-sm muted "stroke:…/4/solid/l"
+    Radial col gap2 p5 wfill r4 fill:radial(status.warning.bg,surface)
+      Text title-sm "Radial fill"
+      Text body-sm muted "radial(status.warning.bg,surface)"
+  Type row gap6 p5 r4 fill:surface stroke:border
+    Quote text title-sm italic wfill "“Typography is the voice of the interface.”"
+    Strike text body strike muted "was $49"
+    Under text body underline color:link "Read more"
+  Drawings row gap6 p5 r4 fill:surface stroke:border center
+    Logo w64 h64 vb:24,24 shapes:"circle 12 12 10 fill=true c=primary.600|polyline 7 12 11 16 17 8" stroke:white/2
+    Wave w240 h64 d:"M4 32 Q34 4 64 32 T124 32 T184 32 T236 32" stroke:primary.600/3
+    Blob w80 h64 vb:80,64 d:"M40 4 C64 4 76 20 72 36 C68 56 48 62 32 58 C12 54 2 40 8 22 C12 10 24 4 40 4 Z" fill:success.400~60 stroke:success.600/2
+    Rotated row p4 r3 fill:subtle rotate:6 stroke:border/1/dotted
+      Text label "rotate:6 dotted"
