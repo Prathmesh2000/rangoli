@@ -12,7 +12,7 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 | 1 | Visual editor: canvas (shadow DOM, exact CSS), layers, inspector (Design/RDL/CSS), tokens & palette, lint with one-click fixes, activity feed, live sync with agents, shared undo, copy/paste as RDL | ✅ done |
 | 2 | Motion as data (RDL `motion` blocks): states → CSS transitions, enter/exit → keyframes, springs → CSS `linear()`, automatic reduced-motion variants, motion lint (M01–M11), presets, `motion_curve` value tables for agents, editor Motion tab with replay | ✅ done |
 | 3 | Collaboration & review: agent "Apply directly / Ask first" mode, suggestions (change sets) with side-by-side / stacked compare + accept/reject, comment threads with @agent inbox, review pins with one-click fixes, named versions + diff, presence, LAN sharing with editor/reviewer/viewer invite links | ✅ done |
-| 4 | Timeline, smart/layout animate, prototype + exports | |
+| 4 | Prototype (`proto` blocks: navigate/overlay/close/back/swap/play; dissolve/slide/push/smart animate; delay & key triggers), timelines (`timeline` blocks → CSS + player), standalone HTML prototype + live `/play`, agents SEE via `render_png` + `motion_filmstrip`, one server per document (agents attach over `/mcp`) | ✅ done |
 | 5 | Icon Studio | |
 | 6 | Image Studio (compose/edit) | |
 | 7 | Figma bridge, framework adapters (React-MUI, Tailwind…) | |
