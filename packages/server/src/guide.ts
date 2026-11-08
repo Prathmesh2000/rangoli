@@ -19,6 +19,7 @@ RDL quick reference (one node per line, indentation = children):
     font:"IBM Plex Sans"|display|mono lh:1.4 ls:-0.02em italic underline strike upper lower capitalize align:justify
     blur:4 bgblur:12 (frosted) blend:multiply rotate:-8 z:2 overflow:hidden|auto cursor:pointer ratio:16/9
     abs at:x,y (float inside any parent: badges, stickers, overlays) · css:"filter:grayscale(1)" (plain declarations only)
+- clear anything: unset:rotate,italic,css,shadow,abs,w,paths … (back to inherited / component default)
 - draw with a pen: Shape w120 h40 d:"M2 20 Q32 2 60 20 T118 20" stroke:primary.600/3  (SVG path, coords in vb:w,h — default = size)
     or shape language: Logo w48 h48 vb:24,24 shapes:"circle 12 12 10 fill=true c=primary.600|polyline 7 12 11 16 17 8" stroke:white/2
 - your own components (nothing is fixed):
@@ -26,6 +27,7 @@ RDL quick reference (one node per line, indentation = children):
     building block from layers:  component @PlanCard from #n12 ["description"] [keep] → text/icon/image layers become props by
       layer name (@PlanCard "Team" price="$49" note=none mark=ui/star). Linked: component @PlanCard detach #id → edit → from #id updates all.
     components_list shows them under "This document"; component_help shows slots and your rules.
+- tokens in RDL: token color.primary.600 #1d4ed8 dark=#60a5fa · token radius.control {radius.full} · token textStyle.body.fontSize 15 · language editorial [brand=#9a3b26]
 - design language: design_language (no id = list) switches type, density, radii, elevation and motion for every component at once:
     rangoli material fluent cupertino carbon editorial playful brutalist dense. Pick one that fits the product before styling by hand.
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)
@@ -33,7 +35,7 @@ RDL quick reference (one node per line, indentation = children):
     Switch Slider Segmented Rating · Badge Chip Tag Status Avatar Kbd Divider Tooltip Skeleton Spinner ProgressBar RunBar ·
     Tabs Breadcrumbs Pagination Stepper · Alert Toast · Chart(kind=column|bar|line|area|stacked|donut|heatmap) Sparkline Meter ·
     CodeBlock NumberInput TagInput OTP AvatarGroup ColorPicker · Video Carousel.   e.g. @Status variant=failed · @Tabs selected=1 "Overview|Runs:24|Settings"
-    charts: @Chart kind=line w560 h240 data="94,96,98;…" labels="Mon|Tue|Wed" series="A|B" unit="%" "Title" — one axis, ≤8 series, fixed colours
+    charts: @Chart kind=line w560 h240 data="94,96,98;…" labels="Mon|Tue|Wed" series="A|B" unit="%" "Title" — one axis, ≤8 series, fixed colours; table=true also shows the numbers (use it when series must be readable without hover)
 - patterns (one line → editable layers, see patterns_list / pattern_help): +page-header +stats +toolbar +table +sidebar-nav +topbar
     +form +form-field +settings-row +modal +drawer +dropdown-menu +command-palette +empty-state +run-summary +test-case
     +login +signup +verify-code · +kanban +comments +chat +notifications +onboarding-checklist +timeline +profile-card ·

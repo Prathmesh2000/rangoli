@@ -59,3 +59,37 @@ describe('design languages', () => {
     expect(fontStack(['Source Serif 4', 'Segoe UI', 'Georgia', '-apple-system', 'serif'])).toBe('"Source Serif 4", "Segoe UI", Georgia, -apple-system, serif');
   });
 });
+
+describe('token and language commands (RDL)', () => {
+  it('sets tokens with modes and aliases, undoably; rejects broken aliases', async () => {
+    const { applyRdl } = await import('./rdl.js');
+    const doc = createDocument();
+    applyRdl(doc, 'token color.primary.600 #1d4ed8 dark=#60a5fa\ntoken space.4 18\ntoken radius.control {radius.full}\ntoken color.brand.accent #ff5a1f');
+    const r = new TokenResolver(doc.data.tokens);
+    expect([r.resolve('color.primary.600'), r.resolve('color.primary.600', 'dark'), r.resolve('space.4'), r.resolve('radius.control'), r.resolve('color.brand.accent')]).toEqual(['#1d4ed8', '#60a5fa', 18, 9999, '#ff5a1f']);
+    doc.undo();
+    expect(new TokenResolver(doc.data.tokens).resolve('space.4')).toBe(16);
+    expect(() => applyRdl(doc, 'token radius.control {radius.nope}')).toThrow(/does not resolve/);
+  });
+
+  it('switches language keeping the brand', async () => {
+    const { applyRdl } = await import('./rdl.js');
+    const doc = createDocument();
+    applyRdl(doc, 'language material brand=#336699');
+    applyRdl(doc, 'language brutalist');
+    expect(languageOf(doc.data.tokens)).toEqual({ id: 'brutalist', options: { brand: '#336699' } });
+    expect(() => applyRdl(doc, 'language nope')).toThrow(/unknown design language/);
+  });
+});
+
+describe('composite tokens', () => {
+  it('edits one field of a text style, undoably', async () => {
+    const { applyRdl } = await import('./rdl.js');
+    const doc = createDocument();
+    applyRdl(doc, 'token textStyle.body.fontSize 17');
+    expect((new TokenResolver(doc.data.tokens).resolve('textStyle.body') as { fontSize: number }).fontSize).toBe(17);
+    doc.undo();
+    expect((new TokenResolver(doc.data.tokens).resolve('textStyle.body') as { fontSize: number }).fontSize).toBe(14);
+    expect(() => applyRdl(doc, 'token space.4.nope 1')).toThrow(/is a token, not a group/);
+  });
+});

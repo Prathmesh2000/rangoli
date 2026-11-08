@@ -55,3 +55,11 @@ describe('charts', () => {
     expect(html.match(/rk-status/g)).toHaveLength(1);
   });
 });
+
+describe('chart table view', () => {
+  it('is hidden by default and visible with table=true', () => {
+    const html = (flags: string) => { const doc = createDocument(); applyRdl(doc, `@Chart ${flags} data="1,2" labels="a|b"`); return renderFragment(doc).html; };
+    expect(html('')).toContain('class="rk-sr"');
+    expect(html('table=true')).toContain('class="rk-dtable"');
+  });
+});

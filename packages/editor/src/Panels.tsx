@@ -1,8 +1,69 @@
 import { useMemo, useState } from 'react';
-import { contrastRatio, RAMP_STEPS, TokenResolver, wcagLevel } from '@rangoli/engine';
+import { LANGUAGES, contrastRatio, fontStack, languageOf, languageTokens, RAMP_STEPS, TokenResolver, wcagLevel, type RangoliDocument } from '@rangoli/engine';
+import { TextInput } from './controls';
 import { authorLabel, getState, rdl, select, setBrand, useEditor } from './store';
 
 // ------------------------------------------------------------------ tokens
+
+/** A token's stored value (alias text like {color.neutral.50} stays an alias). */
+function rawToken(doc: RangoliDocument, path: string): unknown {
+  let cur: unknown = doc.data.tokens;
+  for (const p of path.split('.')) cur = (cur as Record<string, unknown> | undefined)?.[p];
+  return (cur as { $value?: unknown } | undefined)?.$value;
+}
+const tokenArg = (v: string) => (/^[^\s"]+$/.test(v) ? v : JSON.stringify(v));
+const shown = (v: unknown) => (Array.isArray(v) ? v.join(', ') : String(v ?? ''));
+
+/** Write one token, for the active mode only (dark edits leave the light value alone). */
+function writeToken(doc: RangoliDocument, path: string, value: string, mode: string) {
+  if (!value) return;
+  const script = mode === 'dark' ? `token ${path} ${tokenArg(shown(rawToken(doc, path)))} dark=${tokenArg(value)}` : `token ${path} ${tokenArg(value)}`;
+  void rdl(script, `token ${path}`);
+}
+
+function LanguageGallery({ doc }: { doc: RangoliDocument }) {
+  const current = languageOf(doc.data.tokens).id;
+  const cards = useMemo(() => Object.values(LANGUAGES).map((l) => {
+    const r = new TokenResolver(languageTokens(l.id));
+    const fam = (p: string) => { const v = r.resolve(p); return Array.isArray(v) ? fontStack(v as string[]) : String(v); };
+    const head = r.resolve('textStyle.headline') as { fontWeight: number };
+    const label = r.resolve('textStyle.label') as { fontWeight: number; textCase?: string };
+    return { ...l, display: fam('font.family.display'), sans: fam('font.family.sans'), weight: head.fontWeight, labelWeight: label.fontWeight, upper: label.textCase === 'uppercase', brand: r.resolve('color.primary.600') as string, ctl: r.resolve('radius.control') as number, card: r.resolve('radius.card') as number, shadow: r.resolve('shadow.control') as string, canvas: r.resolve('color.bg.canvas') as string, border: r.resolve('color.border.strong') as string };
+  }), []);
+  const active = cards.find((c) => c.id === current);
+  return (
+    <section className="section">
+      <h3 className="section-title">Design language</h3>
+      <div className="lang-grid">
+        {cards.map((c) => (
+          <button key={c.id} className="lang-card" aria-pressed={c.id === current} title={`Best for: ${c.bestFor}`} onClick={() => c.id !== current && void rdl(`language ${c.id}`, `language ${c.name}`)}>
+            <span className="lang-prev" style={{ background: c.canvas }}>
+              <span style={{ fontFamily: c.display, fontWeight: c.weight, fontSize: 20, lineHeight: 1, color: '#1c2026' }}>Aa</span>
+              <span style={{ fontFamily: c.sans, fontWeight: c.labelWeight, fontSize: 10, padding: '4px 8px', background: c.brand, color: '#fff', borderRadius: Math.min(c.ctl, 14), boxShadow: c.shadow, textTransform: c.upper ? 'uppercase' : 'none' }}>Save</span>
+            </span>
+            <span className="lang-name">{c.name.replace(/ \(.*\)$/, '').replace('-style', '')}</span>
+          </button>
+        ))}
+      </div>
+      {active && <p className="hint">{active.feel} Switching keeps a brand colour you set yourself and replaces manual token edits. Undoable.</p>}
+    </section>
+  );
+}
+
+function ScalarTokens({ title, paths, doc, mode, unit }: { title: string; paths: string[]; doc: RangoliDocument; mode: string; unit?: string }) {
+  return (
+    <section className="section">
+      <h3 className="section-title">{title}</h3>
+      {paths.map((p) => (
+        <div key={p} className="tok-row">
+          <span className="sem-name">{p.split('.').slice(1).join('.')}</span>
+          <TextInput value={shown(rawToken(doc, p))} label={p} onCommit={(v) => writeToken(doc, p, v, mode)} />
+          {unit && <span className="hint">{unit}</span>}
+        </div>
+      ))}
+    </section>
+  );
+}
 
 export function TokensPanel() {
   const version = useEditor((s) => s.version);
@@ -18,7 +79,8 @@ export function TokensPanel() {
   const currentBrand = r.resolve('color.primary.600') as string;
 
   return (
-    <div className="tokens">
+    <div className="tokens" data-v={version}>
+      <LanguageGallery doc={doc} />
       <section className="section">
         <h3 className="section-title">Brand</h3>
         <form className="brand-row" onSubmit={(e) => { e.preventDefault(); if (/^#[0-9a-fA-F]{6}$/.test(brand)) void setBrand(brand); }}>
@@ -61,7 +123,7 @@ export function TokensPanel() {
               <div key={t.path} className="sem">
                 <span className="swatch" style={{ background: hex }} />
                 <span className="sem-name">{short}</span>
-                <span className="sem-val">{hex}</span>
+                <TextInput small value={hex} label={`${t.path} value`} onCommit={(v) => writeToken(doc, t.path, v, mode)} />
                 {c !== null && (
                   <span className={`badge ${wcagLevel(c) === 'AA' || wcagLevel(c) === 'AAA' ? 'badge-ok' : 'badge-bad'}`} title={`Contrast on ${bgPath ? r.shortName(bgPath, 'color') : 'surface'}`}>
                     {c.toFixed(1)} {wcagLevel(c)}
@@ -73,13 +135,19 @@ export function TokensPanel() {
         </div>
       </section>
 
+      <ScalarTokens title="Corner radius" doc={doc} mode="light" unit="px" paths={r.group('radius').map((t) => t.path).filter((x) => x !== 'radius.0')} />
+      <ScalarTokens title="Control heights" doc={doc} mode="light" unit="px" paths={r.group('size').map((t) => t.path)} />
+      <ScalarTokens title="Fonts" doc={doc} mode="light" paths={r.group('font.family').map((t) => t.path)} />
+      <ScalarTokens title={`Shadows · ${mode}`} doc={doc} mode={mode} paths={r.group('shadow').map((t) => t.path)} />
+      <ScalarTokens title="Motion durations" doc={doc} mode="light" unit="ms" paths={r.group('motion.duration').map((t) => t.path).filter((x) => x !== 'motion.duration.instant')} />
+
       <section className="section">
         <h3 className="section-title">Spacing</h3>
         {r.group('space').filter((t) => (r.resolve(t.path) as number) > 0).map((t) => (
           <div key={t.path} className="space-row">
             <span className="sem-name">{t.path.slice(6)}</span>
             <span className="space-bar" style={{ width: Math.min(160, r.resolve(t.path) as number) }} />
-            <span className="sem-val">{String(r.resolve(t.path))}px</span>
+            <TextInput small value={String(r.resolve(t.path))} label={t.path} onCommit={(v) => writeToken(doc, t.path, v, 'light')} />
           </div>
         ))}
       </section>
@@ -91,7 +159,11 @@ export function TokensPanel() {
           return (
             <div key={t.path} className="type-row">
               <span style={{ fontSize: Math.min(v.fontSize, 24), fontWeight: v.fontWeight, lineHeight: 1.2 }}>{t.path.slice(10)}</span>
-              <span className="sem-val">{v.fontSize}/{v.lineHeight} · {v.fontWeight}</span>
+              <span className="type-fields">
+                <TextInput small value={String(v.fontSize)} label={`${t.path} size`} onCommit={(x) => void rdl(`token ${t.path}.fontSize ${x}`, 'type size')} />
+                <TextInput small value={String(v.lineHeight)} label={`${t.path} line height`} onCommit={(x) => void rdl(`token ${t.path}.lineHeight ${x}`, 'line height')} />
+                <TextInput small value={String(v.fontWeight)} label={`${t.path} weight`} onCommit={(x) => void rdl(`token ${t.path}.fontWeight ${x}`, 'font weight')} />
+              </span>
             </div>
           );
         })}

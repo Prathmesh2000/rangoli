@@ -339,7 +339,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
   server.registerTool(
     'design_language',
     {
-      description: 'Switch the whole design language — type scale & fonts, density (control heights), corner radii, elevation, motion feel — in one undoable step. Every library component and pattern restyles. Omit id to list languages with when to use each. The current brand colour is kept unless you pass brand. Replaces individual token_set tweaks.',
+      description: 'Switch the whole design language — type scale & fonts, density (control heights), corner radii, elevation, motion feel — in one undoable step. Every library component and pattern restyles. Omit id to list languages with when to use each. A brand colour set earlier is kept unless you pass brand; otherwise the language brings its own. Replaces individual token_set tweaks.',
       inputSchema: {
         id: z.string().optional(),
         brand: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),

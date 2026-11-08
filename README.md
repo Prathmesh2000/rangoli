@@ -20,6 +20,19 @@ App row w1440 h900 fill:canvas clip
       +table cols="Run|Status|Owner|Duration|Started" rows=6 select=true
 ```
 
+## Make it yours
+
+Nothing in the library is fixed, and everything below works the same for a human in the editor and an agent over MCP.
+
+| Need | How |
+|---|---|
+| A different look everywhere | `language material` (also rangoli, fluent, cupertino, carbon, editorial, playful, brutalist, dense): type, density, radii, elevation and motion in one undoable step |
+| Any single token | `token color.primary.600 #1d4ed8 dark=#60a5fa` · `token textStyle.body.fontSize 15` |
+| Any style on a layer | gradients, `token~alpha`, layered shadows, per-corner radius, per-side borders, typography, blur, blend, rotate, `abs at:x,y`, and `css:"…"` for the rest; `unset:…` clears |
+| Restyle a component or add a variant | `component @Button` then `variant=pill rfull px6`. Survives library upgrades; `component @Button reset` undoes it |
+| Your own building blocks | `component @PlanCard from #n12`. Text, icon and image layers become props; `detach`, edit and `from` again to update every instance |
+| Something that does not exist | draw it: pen paths with `d:"M2 20 Q32 2 60 20"`, or the editor's frame, rectangle, ellipse, line, pen and text tools |
+
 ## Status
 
 | Phase | Scope | State |
@@ -31,6 +44,7 @@ App row w1440 h900 fill:canvas clip
 | 4 | Prototype (`proto` blocks: navigate/overlay/close/back/swap/play; dissolve/slide/push/smart animate; delay & key triggers), timelines (`timeline` blocks → CSS + player), standalone HTML prototype + live `/play`, agents SEE via `render_png` + `motion_filmstrip`, one server per document (agents attach over `/mcp`) | ✅ done |
 | 5 | Icon Studio: shape language on a 24 grid (line/polyline/polygon/rect/circle/dot/arc/path), 0.5 snapping, icon lint (grid, live area, stroke, tiny detail, complexity, optical size), 21-icon starter set, `Icon icon:clock` in designs (currentColor, leads button labels), drafts → Keep, `icon_render` sheet, SVG/React/sprite export | ✅ done |
 | 6 | Image Studio: content-addressed assets (`Image asset:… fit:cover alt:"…"`), non-destructive edits (crop/resize/rotate/flip/adjust → WebP/JPEG/PNG) in the system browser's canvas, blur placeholders, compositions (frames with role:image + social-card / empty-state / banner templates) exported at 1–3×, image lint (alt, weight, upscaling, distortion, missing), safe asset serving | ✅ done |
+| 6.5 | Customisation: full style properties, 9 design languages, component restyling and building blocks, charts and rich components, 30 more patterns, drawing tools, full inspector, token editing | ✅ done |
 | 7 | Figma bridge, framework adapters (React-MUI, Tailwind…) | |
 
 ## Quick start
@@ -104,6 +118,10 @@ node packages/server/dist/cli.js serve ./designs/app.rangoli --share
 ## Editor
 
 Every human edit is sent as RDL to the same server the agent uses — one history, one undo stack, live on both sides. The canvas renders with the same engine and CSS as export.
+
+Tools: V select · F frame · R rectangle · O ellipse · L line · P pen (click for corners, drag for curves, Enter to finish, click the first point to close) · T text. Hold Shift for squares, circles and straight lines. Drag a selected free-floating layer to move it, arrow keys nudge it, the corner handle resizes.
+
+The inspector takes any value in every field, with tokens suggested; emptying a field clears that property.
 
 Shortcuts: Delete · Ctrl+Z / Ctrl+Shift+Z · Ctrl+D duplicate · Ctrl+C copies selection as RDL (paste into your agent chat) · Ctrl+V pastes RDL · Enter / Shift+Enter select child / parent · Alt+↑/↓ reorder · Esc deselect · Ctrl+wheel zoom · Shift+1 fit
 

@@ -84,3 +84,24 @@ describe('contrast on rich fills', () => {
     expect(d03).toEqual(['n3']);
   });
 });
+
+describe('unset', () => {
+  it('removes properties so they fall back to inherited/component defaults', () => {
+    const doc = createDocument();
+    applyRdl(doc, 'Box col p4 rotate:5 italic css:"opacity:.5" shadow:md abs at:4,4 w200\n  T text "x"');
+    applyRdl(doc, 'set #n1 unset:rotate,italic,css,shadow,abs,w');
+    expect(doc.node('n1')).toMatchObject({ layout: { mode: 'col' } });
+    expect(doc.node('n1')!.style).toBeUndefined();
+    expect(doc.node('n1')!.absolute).toBeUndefined();
+    expect(() => applyRdl(doc, 'set #n1 unset:bogus')).toThrow(/unknown property "bogus"/);
+  });
+});
+
+describe('pen paths', () => {
+  it('unset:paths replaces drawn paths instead of adding to them', () => {
+    const doc = createDocument();
+    applyRdl(doc, 'P w40 h40 d:"M0 0 L10 10"');
+    applyRdl(doc, 'set #n1 unset:paths d:"M1 1 L2 2" d:"M3 3 L4 4"');
+    expect(doc.node('n1')!.vector!.paths.map((p) => p.d)).toEqual(['M1 1 L2 2', 'M3 3 L4 4']);
+  });
+});

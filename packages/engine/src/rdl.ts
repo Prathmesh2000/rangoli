@@ -18,6 +18,7 @@ import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
 import { findAsset } from './images.js';
 import { expandPatterns } from './patterns.js';
 import { libraryComponents } from './library.js';
+import { LANGUAGES, languageOf, languageTokens } from './languages.js';
 import { expandTemplate, slotName } from './components.js';
 
 export interface Diagnostic {
@@ -99,6 +100,8 @@ export type Command =
   | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'iconset'; line: number; name: string; opts: string[] }
   | { kind: 'icon'; line: number; set: string; name: string; opts: string[]; lines: { no: number; toks: string[] }[] }
+  | { kind: 'token'; line: number; path: string; value: string; modes: Record<string, string> }
+  | { kind: 'language'; line: number; id: string; opts: Record<string, string> }
   | { kind: 'component'; line: number; name: string; from?: string; detach?: string; opts: string[]; description?: string; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
@@ -111,7 +114,9 @@ const isCommandLine = (ln: Line) =>
   (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4) ||
   (ln.toks[0] === 'icon' && /^[\w-]+\/[\w~.-]+$/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? '')) ||
-  (ln.toks[0] === 'component' && /^@[A-Za-z][\w-]*$/.test(ln.toks[1] ?? ''));
+  (ln.toks[0] === 'component' && /^@[A-Za-z][\w-]*$/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'token' && /^[A-Za-z][\w-]*(\.[\w-]+)+$/.test(ln.toks[1] ?? '') && ln.toks.length >= 3) ||
+  (ln.toks[0] === 'language' && /^[a-z][\w-]*$/.test(ln.toks[1] ?? '') && ln.toks.slice(2).every((t) => /^[\w-]+=/.test(t)));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
   const lines = lex(expandPatterns(src));
@@ -153,6 +158,19 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
         i++;
       }
       commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
+    if ((kw === 'token' || kw === 'language') && isCommandLine(ln)) {
+      i++;
+      const kv: Record<string, string> = {};
+      const rest = ln.toks.slice(kw === 'token' ? 3 : 2);
+      for (const t of rest) {
+        const m = /^([\w-]+)=(.+)$/.exec(t);
+        if (m) kv[m[1]!] = m[2]!.startsWith('"') ? unquote(m[2]!) : m[2]!;
+        else errors.push({ line: ln.no, severity: 'error', message: `Unexpected "${t}" — use key=value (e.g. dark=#60a5fa)` });
+      }
+      if (kw === 'token') commands.push({ kind: 'token', line: ln.no, path: ln.toks[1]!, value: ln.toks[2]!.startsWith('"') ? unquote(ln.toks[2]!) : ln.toks[2]!, modes: kv });
+      else commands.push({ kind: 'language', line: ln.no, id: ln.toks[1]!, opts: kv });
       continue;
     }
     if (kw === 'component' && isCommandLine(ln)) {
@@ -331,6 +349,58 @@ export function sanitizeCss(css: string): string | undefined {
 const fixed = (v: number): Dim => ({ kind: 'fixed', v });
 
 /** Apply flags onto a mutable node. Returns nothing; reports diagnostics. */
+/** Property names accepted by unset: → how to remove them from a node. */
+const UNSET: Record<string, (n: RNode) => void> = {
+  fill: (n) => { if (n.style) delete n.style.fill; },
+  stroke: (n) => { if (n.style) delete n.style.stroke; },
+  radius: (n) => { if (n.style) delete n.style.radius; },
+  shadow: (n) => { if (n.style) delete n.style.shadow; },
+  opacity: (n) => { if (n.style) delete n.style.opacity; },
+  blur: (n) => { if (n.style) delete n.style.blur; },
+  bgblur: (n) => { if (n.style) delete n.style.backdropBlur; },
+  blend: (n) => { if (n.style) delete n.style.blend; },
+  rotate: (n) => { if (n.style) delete n.style.rotate; },
+  z: (n) => { if (n.style) delete n.style.z; },
+  overflow: (n) => { if (n.style) { delete n.style.overflow; delete n.style.clip; } },
+  cursor: (n) => { if (n.style) delete n.style.cursor; },
+  ratio: (n) => { if (n.style) delete n.style.aspect; },
+  css: (n) => { if (n.style) delete n.style.css; },
+  color: (n) => { if (n.style) delete n.style.color; },
+  textstyle: (n) => { if (n.style) delete n.style.textStyle; },
+  italic: (n) => { if (n.style) delete n.style.italic; },
+  decoration: (n) => { if (n.style) delete n.style.decoration; },
+  case: (n) => { if (n.style) delete n.style.textTransform; },
+  align: (n) => { if (n.style) delete n.style.textAlign; },
+  font: (n) => { if (n.style) delete n.style.font; },
+  family: (n) => { if (n.style?.font) delete n.style.font.family; },
+  size: (n) => { if (n.style?.font) delete n.style.font.size; },
+  weight: (n) => { if (n.style?.font) delete n.style.font.weight; },
+  lh: (n) => { if (n.style?.font) delete n.style.font.lineHeight; },
+  ls: (n) => { if (n.style?.font) delete n.style.font.letterSpacing; },
+  abs: (n) => { delete n.absolute; delete n.position; },
+  paths: (n) => { if (n.vector) n.vector.paths = n.vector.paths.filter((p) => p.fromShapes); },
+  w: (n) => { if (n.size) delete n.size.w; },
+  h: (n) => { if (n.size) delete n.size.h; },
+  minw: (n) => { if (n.size) delete n.size.minW; },
+  maxw: (n) => { if (n.size) delete n.size.maxW; },
+  minh: (n) => { if (n.size) delete n.size.minH; },
+  maxh: (n) => { if (n.size) delete n.size.maxH; },
+  gap: (n) => { if (n.layout) delete n.layout.gap; },
+  padding: (n) => { if (n.layout) delete n.layout.padding; },
+  wrap: (n) => { if (n.layout) delete n.layout.wrap; },
+  justify: (n) => { if (n.layout) delete n.layout.justify; },
+  items: (n) => { if (n.layout) delete n.layout.align; },
+};
+function unsetProp(n: RNode, key: string): boolean {
+  const fn = UNSET[key];
+  if (!fn) return false;
+  fn(n);
+  if (n.style && !Object.keys(n.style).length) delete n.style;
+  if (n.style?.font && !Object.keys(n.style.font).length) delete n.style.font;
+  if (n.size && !Object.keys(n.size).length) delete n.size;
+  return true;
+}
+
 export function applyFlags(node: RNode, flags: string[], text: string | undefined, ctx: RdlContext, line: number, diag: Diagnostic[], hasChildren = false): void {
   const layout = (): Layout => (node.layout ??= { mode: 'col' });
   const size = (): Sizing => (node.size ??= {});
@@ -416,6 +486,11 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if ((m = /^lh:(\d+(?:\.\d+)?)$/.exec(f))) { style().font = { ...(style().font ?? {}), lineHeight: Number(m[1]) }; continue; }
     if ((m = /^ls:(-?\d*\.?\d+)(em|px)?$/.exec(f))) { style().font = { ...(style().font ?? {}), letterSpacing: `${m[1]}${m[2] ?? 'px'}` }; continue; }
     if (f === 'italic') { style().italic = true; continue; }
+    // unset:rotate,italic,css — remove properties (back to inherited / component default)
+    if ((m = /^unset:([\w,-]+)$/.exec(f))) {
+      for (const key of m[1]!.split(',')) if (!unsetProp(node, key)) diag.push({ line, severity: 'error', message: `unset: unknown property "${key}" — e.g. ${Object.keys(UNSET).join(', ')}` });
+      continue;
+    }
     if (f === 'underline' || f === 'strike' || f === 'nodecoration') { style().decoration = f === 'underline' ? 'underline' : f === 'strike' ? 'line-through' : 'none'; continue; }
     if (f === 'upper' || f === 'lower' || f === 'capitalize') { style().textTransform = f === 'upper' ? 'uppercase' : f === 'lower' ? 'lowercase' : 'capitalize'; continue; }
     // effects & placement
@@ -701,6 +776,48 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const given = new Set(specs.map((s) => s.trigger));
         const merged = [...(prev?.specs.filter((s) => !given.has(s.trigger)) ?? []), ...specs];
         ops.push({ op: 'setMotion', target: key, def: { target: key, specs: merged } });
+        break;
+      }
+      case 'token': {
+        // token color.primary.600 #1d4ed8 dark=#60a5fa  ·  token space.4 18  ·  token radius.control {radius.full}
+        const tokens = structuredClone(doc.data.tokens) as Record<string, unknown>;
+        const parts = cmd.path.split('.');
+        const key = parts[parts.length - 1]!;
+        const parse = (v: string): unknown => (/^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
+        let cur = tokens;
+        let subField = false;
+        let bad = false;
+        for (const [i, p] of parts.slice(0, -1).entries()) {
+          const next = cur[p] as Record<string, unknown> | undefined;
+          if (next && typeof next === 'object' && '$value' in next) {
+            // one field of a composite token: token textStyle.body.fontSize 15
+            const val = next.$value;
+            if (i === parts.length - 2 && val && typeof val === 'object' && !Array.isArray(val)) { (val as Record<string, unknown>)[key] = parse(cmd.value); subField = true; }
+            else { errors.push({ line: cmd.line, severity: 'error', message: `${cmd.path}: "${p}" is a token, not a group` }); bad = true; }
+            break;
+          }
+          cur = (cur[p] ??= {}) as Record<string, unknown>;
+        }
+        if (bad) break;
+        if (subField) { ops.push({ op: 'setTokens', tokens: tokens as never }); break; }
+        const leaf = (cur[key] ??= { $value: parse(cmd.value) }) as Record<string, unknown>;
+        leaf.$value = parse(cmd.value);
+        for (const [mode, v] of Object.entries(cmd.modes)) {
+          const ext = (leaf.$extensions ??= {}) as Record<string, Record<string, Record<string, unknown>>>;
+          ((ext.rangoli ??= {}).modes ??= {})[mode] = parse(v);
+        }
+        const check = new TokenResolver(tokens as never);
+        if (check.resolve(cmd.path) === undefined) errors.push({ line: cmd.line, severity: 'error', message: `${cmd.path} = ${cmd.value} does not resolve (missing alias?)` });
+        else ops.push({ op: 'setTokens', tokens: tokens as never });
+        break;
+      }
+      case 'language': {
+        // language editorial [brand=#9a3b26] — switches type, density, shape, elevation and motion; keeps the brand
+        if (!LANGUAGES[cmd.id]) { errors.push({ line: cmd.line, severity: 'error', message: `unknown design language "${cmd.id}" — ${Object.keys(LANGUAGES).join(', ')}` }); break; }
+        const curLang = languageOf(doc.data.tokens);
+        const brand = cmd.opts.brand ?? curLang.options.brand;
+        if (brand && !/^#[0-9a-fA-F]{6}$/.test(brand)) { errors.push({ line: cmd.line, severity: 'error', message: 'brand must be #rrggbb' }); break; }
+        ops.push({ op: 'setTokens', tokens: languageTokens(cmd.id, brand ? { brand } : {}) });
         break;
       }
       case 'component': {

@@ -1,4 +1,4 @@
-import { TokenResolver, isTokenRef, serializeRdl, type Len, type Paint, type RangoliDocument, type RNode } from '@rangoli/engine';
+import { TokenResolver, isTokenRef, nodeLine, serializeRdl, tokenizeLine, type Len, type Paint, type RangoliDocument, type RNode } from '@rangoli/engine';
 
 export const indent = (s: string, by = '  ') => s.split('\n').map((l) => by + l).join('\n');
 
@@ -76,3 +76,28 @@ export const TYPE_GLYPH: Record<RNode['type'], string> = {
   instance: '◈',
   group: '⊞',
 };
+
+/**
+ * A node's own (override) properties as RDL flags, parsed from the engine serializer so the inspector
+ * always shows exactly what an agent would read: { kv: {"fill": "primary.600~40"}, bare: Set{"italic"}, shadows: [...] }.
+ */
+export function nodeFlags(doc: RangoliDocument, node: RNode): { kv: Record<string, string>; bare: Set<string>; shadows: string[] } {
+  const r = new TokenResolver(doc.data.tokens);
+  const toks = tokenizeLine(nodeLine(node, r, doc)).slice(1);
+  const kv: Record<string, string> = {};
+  const bare = new Set<string>();
+  const shadows: string[] = [];
+  for (const t of toks) {
+    if (t.startsWith('"')) continue;
+    const i = t.indexOf(':');
+    if (i > 0 && !t.includes('=') ) {
+      const k = t.slice(0, i), v = t.slice(i + 1);
+      if (k === 'shadow' || k === 'shadow+') shadows.push(v);
+      else kv[k] = v.startsWith('"') ? JSON.parse(v) : v;
+    } else bare.add(t);
+  }
+  return { kv, bare, shadows };
+}
+
+/** Quote an RDL flag value when it contains spaces or quotes. */
+export const rdlVal = (v: string) => (/^[^\s"]+$/.test(v) ? v : JSON.stringify(v));

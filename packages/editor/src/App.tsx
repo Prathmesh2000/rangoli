@@ -7,9 +7,10 @@ import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
 import { IconStudio } from './IconStudio';
 import { InsertPalette } from './InsertPalette';
+import { DrawTools, TOOL_KEYS } from './Draw';
 import { ImageStudio } from './ImageStudio';
 import { ReviewPanel } from './ReviewPanel';
-import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId } from './store';
+import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId, setTool } from './store';
 
 const INSERTS: { key: string; label: string; rdl: string }[] = [
   { key: 'frame', label: 'Frame', rdl: 'Frame col gap3 p4 w320 fill:surface stroke:border r3' },
@@ -66,6 +67,15 @@ function useShortcuts() {
         return;
       }
       if (e.key === 'Escape') { select([]); return; }
+      if (!mod && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) { setTool(TOOL_KEYS[e.key.toLowerCase()]!); return; }
+      // arrow keys nudge free-floating layers (Shift = 10px)
+      if (!mod && !e.altKey && e.key.startsWith('Arrow') && one?.position && (one.absolute || (one.parent && doc.node(one.parent).layout?.mode === 'none'))) {
+        e.preventDefault();
+        const d = e.shiftKey ? 10 : 1;
+        const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
+        void rdl(`set #${one.id} at:${one.position.x + dx},${one.position.y + dy}`, 'nudge');
+        return;
+      }
       if (e.key === 'Enter' && one) {
         e.preventDefault();
         if (e.shiftKey && one.parent) select([one.parent]);
@@ -203,7 +213,7 @@ export function App() {
         <div className="panel-head">Activity</div>
         <div className="panel-body activity-body"><Activity /></div>
       </aside>
-      <main className="center"><Canvas /></main>
+      <main className="center"><Canvas /><DrawTools /></main>
       <aside className="right">
         <div className="tabs tabs-top" role="tablist">
           <button role="tab" aria-selected={tab === 'inspect'} className="tab" onClick={() => setTab('inspect')}>Inspect</button>

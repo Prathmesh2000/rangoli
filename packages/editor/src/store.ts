@@ -57,7 +57,11 @@ export interface EditorState {
   iconSel: string | null;
   /** unsaved shape source being typed (live preview) */
   iconDraft: string | null;
+  /** canvas tool */
+  tool: Tool;
 }
+
+export type Tool = 'select' | 'frame' | 'rect' | 'ellipse' | 'line' | 'pen' | 'text';
 
 let state: EditorState = {
   doc: null,
@@ -86,7 +90,12 @@ let state: EditorState = {
   imageSel: null,
   iconSel: null,
   iconDraft: null,
+  tool: 'select',
 };
+
+export function setTool(tool: Tool): void {
+  setState({ tool });
+}
 
 export function setView(view: 'design' | 'icons' | 'images'): void {
   localStorageSet('rangoli.view', view);

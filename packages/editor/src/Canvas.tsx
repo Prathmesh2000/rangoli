@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { renderCss, renderFragment, type RangoliDocument } from '@rangoli/engine';
-import { clearCompare, getState, select, setHover, setRightTab, setZoom, useEditor } from './store';
+import { canEdit, clearCompare, getState, select, setHover, setRightTab, setZoom, useEditor } from './store';
+import { DrawLayer, consumeDrag, startMove, startResize } from './Draw';
 
 /** Render a document into a shadow root (shared by canvas and compare panes). */
 export function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''): void {
@@ -8,7 +9,7 @@ export function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''
   const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
   root.innerHTML = `<style>${css}
 :host{display:block;background:transparent!important}
-.stage{display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start;padding:64px}
+.stage{display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start;padding:64px 64px 64px 128px}
 .stage{width:max-content}
 .stage>[data-rid]{background-clip:padding-box;flex-shrink:0}
 .stage [data-rid]:not([data-play]){animation:none!important}
@@ -201,8 +202,20 @@ export function Canvas() {
     <div className="canvas" ref={scrollRef} onScroll={measure} data-mode={mode}
       onMouseMove={(e) => setHover(idFromEvent(e))}
       onMouseLeave={() => setHover(null)}
+      onPointerDown={(e) => {
+        // drag a selected free-floating layer to move it
+        if (e.button !== 0 || getState().tool !== 'select' || !canEdit()) return;
+        const id = idFromEvent(e as unknown as React.MouseEvent);
+        const cur = getState();
+        const node = id && cur.selection.length === 1 && cur.selection[0] === id ? cur.doc?.findNode(id)?.node : undefined;
+        if (!node) return;
+        const free = node.absolute || (node.parent && cur.doc!.node(node.parent).layout?.mode === 'none');
+        const el = shadowRef.current?.querySelector<HTMLElement>(`[data-rid="${id}"]`);
+        if (free && el) startMove(e, el, node.id, node.position?.x ?? 0, node.position?.y ?? 0, zoom);
+      }}
       onClick={(e) => {
         e.preventDefault();
+        if (consumeDrag()) return;
         const id = idFromEvent(e);
         if (!id) return select([]);
         const cur = getState().selection;
@@ -222,11 +235,19 @@ export function Canvas() {
       {boxes.sel.map((b) => (
         <div key={b.id} className="ov ov-sel" style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
           <span className="ov-label">{b.label}</span>
+          {boxes.sel.length === 1 && canEdit() && (
+            <span className="ov-grip" title="Drag to resize" onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                const el = shadowRef.current?.querySelector<HTMLElement>(`[data-rid="${b.id}"]`);
+                if (el) startResize(e, el, b.id, zoom, getState().doc?.findNode(b.id)?.node.type === 'text');
+              }} />
+          )}
         </div>
       ))}
       {boxes.start && (
         <span className="start-badge" style={{ left: boxes.start.x + boxes.start.w, top: boxes.start.y - 24 }} title="Prototype starts on this screen">▶ Start</span>
       )}
+      <DrawLayer shadow={shadowRef.current} scroll={scrollRef.current} />
       {boxes.pins.map((p) => (
         <button key={p.node} className={`pin${p.severity ? ` pin-${p.severity}` : ''}`} style={{ left: p.x - 10, top: p.y - 10 }}
           aria-label={`${p.count} open ${p.severity ? 'review finding' : 'comment'}${p.count > 1 ? 's' : ''} on #${p.node}`}

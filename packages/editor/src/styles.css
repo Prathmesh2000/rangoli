@@ -347,3 +347,51 @@ a.btn { text-decoration: none; color: inherit; }
 .palette-name { font-weight: 500; text-transform: capitalize; }
 .palette-hint { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-foot { padding: 2px 8px 0; }
+
+/* inspector: full property controls */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.section-toggle { display: flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; cursor: pointer; color: var(--text-3); }
+.section-toggle .section-title { margin: 0; }
+.section-toggle:hover .section-title { color: var(--text); }
+.section-caret { font-size: 10px; width: 10px; }
+.section-head + * { margin-top: 6px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+.quad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; width: 100%; }
+.quad .input { padding: 0 4px; text-align: center; }
+.stop { display: flex; gap: 4px; align-items: center; width: 100%; }
+.shadow-layer { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.tog-row { display: flex; gap: 4px; }
+.tog { min-width: 28px; height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); color: var(--text-2); cursor: pointer; font-size: 12px; }
+.tog[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.comp-edit { margin-top: 8px; display: grid; gap: 6px; }
+.textarea.mono, .mono { font-family: var(--mono); font-size: 12px; }
+.textarea { height: auto; padding: 6px 8px; resize: vertical; }
+.swatch-pick { position: relative; cursor: pointer; overflow: hidden; }
+.swatch-pick input { position: absolute; inset: -4px; width: 200%; height: 200%; opacity: 0; cursor: pointer; }
+
+/* drawing */
+.draw-tools { position: absolute; left: 12px; top: 12px; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-pop); }
+.draw-tool { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 5px; background: none; color: var(--text-2); cursor: pointer; }
+.draw-tool:hover { background: var(--panel-2); color: var(--text); }
+.draw-tool[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.draw-layer { position: absolute; left: 0; top: 0; min-width: 100%; min-height: 100%; cursor: crosshair; touch-action: none; z-index: 4; }
+.draw-box { position: absolute; border: 1.5px solid var(--sel); background: color-mix(in srgb, var(--sel) 12%, transparent); }
+.draw-svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.draw-hint { position: absolute; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: var(--text); color: var(--panel); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.ov-grip { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; background: #fff; border: 1.5px solid var(--sel); border-radius: 2px; cursor: nwse-resize; pointer-events: auto; }
+
+/* tokens */
+.lang-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lang-card { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); cursor: pointer; min-width: 0; }
+.lang-card:hover { border-color: var(--line-strong); }
+.lang-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.lang-prev { display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 6px; height: 64px; padding: 6px; border-radius: 3px; overflow: hidden; }
+.lang-name { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tok-row { display: grid; grid-template-columns: 76px 1fr auto; align-items: center; gap: 6px; min-height: 30px; }
+.type-fields { display: inline-flex; gap: 4px; }
+.type-fields .input-sm { width: 40px; padding: 0 4px; text-align: center; }
+.sem .input-sm { width: 76px; height: 24px; font-family: var(--mono); font-size: 11px; }
+.space-row .input-sm { width: 48px; height: 24px; margin-left: auto; text-align: right; }
+.sem { display: grid; grid-template-columns: 16px minmax(0, 1fr) 76px 58px; align-items: center; gap: 6px; }
+.sem .badge { justify-self: end; white-space: nowrap; }

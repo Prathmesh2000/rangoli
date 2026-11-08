@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { applyRdl, defaultTokens, formatLint, lint, prototypeHtml, renderDocument, serializeRdl, type ChangeEntry, type EditOp, type ImageFormat, type Severity } from '@rangoli/engine';
+import { applyRdl, formatLint, languageOf, languageTokens, lint, prototypeHtml, renderDocument, serializeRdl, type ChangeEntry, type EditOp, type ImageFormat, type Severity } from '@rangoli/engine';
 import { composeImage, editImage, placeholder } from './imaging.js';
 import { writeLock } from './lock.js';
 import { createMcpServer } from './mcp.js';
@@ -339,7 +339,8 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
       if (url.pathname === '/api/tokens/brand' && req.method === 'POST') {
         const b = await body<{ brand?: string }>();
         if (!b.brand || !/^#[0-9a-fA-F]{6}$/.test(b.brand)) return json(400, { error: 'brand must be #rrggbb' });
-        session.doc.apply([{ op: 'setTokens', tokens: defaultTokens({ brand: b.brand }) }], { author, label: `brand ${b.brand}` });
+        const lang = languageOf(session.doc.data.tokens);
+        session.doc.apply([{ op: 'setTokens', tokens: languageTokens(lang.id, { ...lang.options, brand: b.brand }) }], { author, label: `brand ${b.brand}` });
         return json(200, { ok: true });
       }
       if (url.pathname === '/api/versions' && req.method === 'POST') {
