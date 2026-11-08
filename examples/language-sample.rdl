@@ -1,0 +1,18 @@
+Screen col gap5 p6 w640 fill:canvas
+  Head col gap1
+    Eyebrow text label muted "Workspace settings"
+    Title text headline "Notifications"
+    Lede text body muted "Choose when we email you about test runs."
+  Panel col gap4 p5 wfill fill:surface stroke:border rcard
+    Row row gap3 wfill
+      @Input wfill icon=search "Search suites"
+      @Select "Last 7 days"
+    @Alert variant=warning title="Flaky tests detected" "3 tests failed then passed on retry."
+    Opts row gap4
+      @Checkbox checked=true "Failures"
+      @Switch on=true "Daily digest"
+      @Chip variant=success "Passing"
+    Actions row gap2 end wfill
+      @Button variant=ghost "Cancel"
+      @Button variant=secondary "Preview"
+      @Button variant=primary "Save changes"

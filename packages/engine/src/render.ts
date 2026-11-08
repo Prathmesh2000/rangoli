@@ -287,8 +287,9 @@ class Renderer {
     if (s.clip) d.push('overflow:hidden');
     if (s.textStyle) {
       d.push(`font:var(${cssVarName(s.textStyle.token)})`);
-      const v = this.tokens.resolve(s.textStyle.token) as { letterSpacing?: string | number } | undefined;
+      const v = this.tokens.resolve(s.textStyle.token) as { letterSpacing?: string | number; textCase?: string } | undefined;
       if (v?.letterSpacing !== undefined) d.push(`letter-spacing:${typeof v.letterSpacing === 'number' ? `${v.letterSpacing}px` : v.letterSpacing}`);
+      if (v?.textCase) d.push(`text-transform:${v.textCase}`);
     }
     if (s.font) {
       if (s.font.weight) d.push(`font-weight:${s.font.weight}`);

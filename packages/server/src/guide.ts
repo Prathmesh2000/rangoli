@@ -12,8 +12,17 @@ RDL quick reference (one node per line, indentation = children):
 - layout: row col grid cols3 none wrap gapN pN pxN pyN ptN prN pbN plN (N = space scale step: 0.5 1 1.5 2 3 4 5 6 8 10 12 16 24)
 - align: start center end stretch baseline · justify: between around jstart jcenter jend · middle (both center)
 - size: w320 h48 (px) wfill hfill whug hhug minw/maxw/minh/maxh<px>
-- style: fill:<color> stroke:<color>[/width] color:<color> rN (radius step 1-5|full) shadow:sm|md|lg opacity:0.6 muted mono truncate clip
+- style: fill:<color> stroke:<color>[/width] color:<color> rN (radius step 1-5|full|card|control) shadow:sm|md|lg opacity:0.6 muted mono truncate clip
 - color names are tokens: surface canvas subtle border text.secondary primary.600 status.error.fg … (#hex allowed but linted)
+    alpha: primary.600~40 · gradients: fill:linear(135,primary.500,primary.800@80) fill:radial(c1,c2)
+- anything else (no limits): stroke:c/w/dashed|dotted/sides(t r b l, e.g. b or tb) · r:tl,tr,br,bl · shadow:x,y,blur,spread,color[,inset] (+ shadow+: to add layers)
+    font:"IBM Plex Sans"|display|mono lh:1.4 ls:-0.02em italic underline strike upper lower capitalize align:justify
+    blur:4 bgblur:12 (frosted) blend:multiply rotate:-8 z:2 overflow:hidden|auto cursor:pointer ratio:16/9
+    abs at:x,y (float inside any parent: badges, stickers, overlays) · css:"filter:grayscale(1)" (plain declarations only)
+- draw with a pen: Shape w120 h40 d:"M2 20 Q32 2 60 20 T118 20" stroke:primary.600/3  (SVG path, coords in vb:w,h — default = size)
+    or shape language: Logo w48 h48 vb:24,24 shapes:"circle 12 12 10 fill=true c=primary.600|polyline 7 12 11 16 17 8" stroke:white/2
+- design language: design_language (no id = list) switches type, density, radii, elevation and motion for every component at once:
+    rangoli material fluent cupertino carbon editorial playful brutalist dense. Pick one that fits the product before styling by hand.
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)
 - components (≈30, see components_list / component_help): Button IconButton Link · Input Textarea Select SearchInput Checkbox Radio
     Switch Slider Segmented Rating · Badge Chip Tag Status Avatar Kbd Divider Tooltip Skeleton Spinner ProgressBar RunBar ·

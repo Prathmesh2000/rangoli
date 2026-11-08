@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { RangoliDocument } from './document.js';
 import { withLibrary } from './components.js';
+import { upgradeTokens } from './languages.js';
 import type { ComponentDef, DocumentData, Manifest, Page, TokenTree } from './model.js';
 import { defaultMotion, type MotionDef } from './motion.js';
 import type { PrototypeData, Timeline } from './prototype.js';
@@ -42,7 +43,8 @@ export async function loadDocument(dir: string): Promise<RangoliDocument> {
   const read = async <T>(f: string, fallback: T): Promise<T> => (existsSync(join(dir, f)) ? (JSON.parse(await readFile(join(dir, f), 'utf8')) as T) : fallback);
   const manifest = await read<Manifest>('manifest.json', undefined as unknown as Manifest);
   if (manifest.format !== 'rangoli@1') throw new Error(`Unsupported format ${manifest.format}`);
-  const tokens = await read<TokenTree>('tokens.json', {});
+  // older documents gain newly introduced tokens (generated from their own design language)
+  const tokens = upgradeTokens(await read<TokenTree>('tokens.json', {}));
   const components = withLibrary(await read<Record<string, ComponentDef>>('components.json', {}));
   const pages: Record<string, Page> = {};
   for (const p of manifest.pages) pages[p.id] = await read<Page>(join('pages', `${p.id}.json`), { id: p.id, name: p.name, children: [], nodes: {} });

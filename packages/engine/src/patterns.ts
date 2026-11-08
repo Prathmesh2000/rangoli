@@ -48,7 +48,7 @@ ${p.action ? `  @Link ${q(p.action)}` : ''}`,
     category: 'Layout',
     description: 'Content card with title, body and an optional action.',
     params: { title: 'Checkout regression', body: '142 tests · last run 2 hours ago', action: 'Open suite', width: '360' },
-    rdl: (p) => `Card col gap3 p5 w${p.width} fill:surface stroke:border r3
+    rdl: (p) => `Card col gap3 p5 w${p.width} fill:surface stroke:border rcard
   Title text title-sm ${q(p.title!)}
   Body text body-sm muted ${q(p.body!)}
 ${p.action ? `  @Button variant=secondary size=sm ${q(p.action)}` : ''}`,
@@ -60,7 +60,7 @@ ${p.action ? `  @Button variant=secondary size=sm ${q(p.action)}` : ''}`,
     rdl: (p) => {
       const lowerIsBetter = p.better === 'down' || (p.better === 'auto' && /fail|flak|error|duration|time|bug|defect|block/i.test(p.label!));
       const improved = p.delta!.startsWith('-') === lowerIsBetter;
-      return `Stat col gap1 p4 wfill fill:surface stroke:border r3
+      return `Stat col gap1 p4 wfill fill:surface stroke:border rcard
   Label text caption muted ${q(p.label!)}
   Value text size:28 weight:600 ${q(p.value!)}
 ${p.delta ? `  @Chip variant=${improved ? 'success' : 'error'} ${q(p.delta)}` : ''}`;
@@ -189,7 +189,7 @@ ${items(p.options!).map((o, i) => `  @Radio checked=${i === Number(p.selected) ?
     category: 'Forms',
     description: 'Drop zone with browse button and accepted types.',
     params: { title: 'Drop test results here', hint: 'JUnit XML or JSON · up to 50 MB', action: 'Browse files' },
-    rdl: (p) => `Upload col gap2 middle p6 wfill fill:subtle stroke:border.strong r3
+    rdl: (p) => `Upload col gap2 middle p6 wfill fill:subtle stroke:border.strong rcard
   Icon icon:upload w24 h24 color:text.secondary
   Title text body align:center ${q(p.title!)}
   Hint text caption muted align:center ${q(p.hint!)}
@@ -204,7 +204,7 @@ ${items(p.options!).map((o, i) => `  @Radio checked=${i === Number(p.selected) ?
       const cells: string[] = [];
       for (let i = 0; i < start; i++) cells.push(`    Empty${i} h32`);
       for (let d = 1; d <= days; d++) cells.push(`    D${d} h32 middle r2${d === sel ? ' fill:action.primary color:onPrimary' : ''}\n      Text label ${q(String(d))}`);
-      return `DatePicker col gap2 p3 w288 fill:surface stroke:border r3 shadow:md role:dialog
+      return `DatePicker col gap2 p3 w288 fill:surface stroke:border rcard shadow:md role:dialog
   Head row between center
     @IconButton size=sm icon=chevron-left "Previous month"
     Month text label ${q(p.month!)}
@@ -221,7 +221,7 @@ ${cells.join('\n')}`;
     params: { value: 'check', options: 'Checkout flow|Checkout API|Check-in kiosk', selected: '0' },
     rdl: (p) => `Combobox col gap1 w320
   @Input icon=search value=${q(p.value!)} "Search suites"
-  Listbox col p1 fill:surface stroke:border r3 shadow:md role:listbox
+  Listbox col p1 fill:surface stroke:border rcard shadow:md role:listbox
 ${items(p.options!).map((o, i) => `    Option${i} row between center px3 h36 r2${i === Number(p.selected) ? ' fill:selected' : ''}
       Text body ${q(o)}
 ${i === Number(p.selected) ? '      Icon icon:check w16 h16 color:link' : ''}`).join('\n')}`,
@@ -262,7 +262,7 @@ ${indent(PATTERNS['description-list']!.rdl({ items: 'Run ID:RUN-2481|Suite:Check
     category: 'Overlays',
     description: 'Menu of actions. "—" = separator; items starting with ! are destructive. icon via "Name>icon".',
     params: { items: 'Rename>edit|Duplicate>copy|Download results>download|—|!Delete>trash' },
-    rdl: (p) => `Menu col p1 w224 fill:surface stroke:border r3 shadow:md role:menu
+    rdl: (p) => `Menu col p1 w224 fill:surface stroke:border rcard shadow:md role:menu
 ${items(p.items!).map((raw, i) => {
       if (raw === '—' || raw === '-') return `  Sep${i} row py1\n    @Divider`;
       const danger = raw.startsWith('!');
@@ -275,7 +275,7 @@ ${icon ? `    Icon icon:${icon} w16 h16${danger ? '' : ' color:text.secondary'}\
     category: 'Overlays',
     description: 'Small anchored panel with title, text and a link.',
     params: { title: 'Flaky test', body: 'Failed in 2 of the last 10 runs on main.', action: 'See history' },
-    rdl: (p) => `Popover col gap2 p4 w280 fill:surface stroke:border r3 shadow:md role:dialog
+    rdl: (p) => `Popover col gap2 p4 w280 fill:surface stroke:border rcard shadow:md role:dialog
   Title text label ${q(p.title!)}
   Body text body-sm muted ${q(p.body!)}
 ${p.action ? `  @Link ${q(p.action)}` : ''}`,
@@ -327,7 +327,7 @@ ${items(p.items!).map((it) => {
         return `      Cell${i} text body-sm muted ${width(c, i)} ${q(WHEN[r % WHEN.length]!)}`;
       };
       const rowsRdl = Array.from({ length: n }, (_, r) => `  Row${r + 1} col wfill\n${r > 0 ? '    @Divider\n' : ''}    Line row px4 py3 gap4 center wfill\n${sel ? `      @Checkbox checked=${r === 1 ? 'true' : 'false'}\n` : ''}${cols.map((c, i) => cell(c, r, i)).join('\n')}`).join('\n');
-      return `Table col wfill fill:surface stroke:border r3 clip role:table name:"Table"
+      return `Table col wfill fill:surface stroke:border rcard clip role:table name:"Table"
   HeaderRow row px4 py2 gap4 center wfill fill:subtle role:row
 ${sel ? '    @Checkbox checked=false\n' : ''}${cols.map((c, i) => `    H${i} text label muted ${width(c, i)} ${q(c)}`).join('\n')}
 ${rowsRdl}${p.pagination === 'true' ? `\n  @Divider\n  Foot row between center px4 py2 wfill\n    Count text body-sm muted ${q(`1–${n} of 248`)}\n    @Pagination page=1 pages=50` : ''}`;
@@ -337,7 +337,7 @@ ${rowsRdl}${p.pagination === 'true' ? `\n  @Divider\n  Foot row between center p
     category: 'Data',
     description: 'List rows with avatar/icon, primary + secondary text, meta and chevron.',
     params: { items: 'Checkout regression:142 tests · main|Login smoke:24 tests · main|Payments:318 tests · release', icon: 'folder' },
-    rdl: (p) => `List col wfill fill:surface stroke:border r3 role:list
+    rdl: (p) => `List col wfill fill:surface stroke:border rcard role:list
 ${items(p.items!).map((it, i) => {
       const [title = '', meta = ''] = it.split(':');
       return `  Item${i} col wfill
@@ -367,7 +367,7 @@ ${items(p.items!).map((it, i) => {
     category: 'Data',
     description: 'Expandable sections. items = "Question::Answer|…", open = index.',
     params: { items: 'Why are some tests marked flaky?::A test is flaky when it both passes and fails on the same commit within the last 10 runs.|How long are runs kept?::Runs are kept for 90 days, then archived.|Can I re-run a single test?::Yes — open the run and choose Re-run on the test row.', open: '0' },
-    rdl: (p) => `Accordion col wfill fill:surface stroke:border r3
+    rdl: (p) => `Accordion col wfill fill:surface stroke:border rcard
 ${items(p.items!).map((it, i) => {
       const [title = '', body = ''] = it.split('::');
       const open = i === Number(p.open);
@@ -420,7 +420,7 @@ ${Number(p.more) > 0 ? `  @Chip variant=neutral ${q(`+${p.more}`)}` : ''}`,
     category: 'Testing',
     description: 'Run card: name, status, result bar, duration and time.',
     params: { title: 'Checkout regression', status: 'failed', passed: '139', failed: '3', skipped: '5', flaky: '2', duration: '11m 40s', when: '2 hours ago' },
-    rdl: (p) => `RunSummary col gap3 p5 wfill fill:surface stroke:border r3
+    rdl: (p) => `RunSummary col gap3 p5 wfill fill:surface stroke:border rcard
   Head row between center wfill
     Title text title-sm ${q(p.title!)}
     @Status variant=${p.status}
@@ -437,7 +437,7 @@ ${Number(p.more) > 0 ? `  @Chip variant=neutral ${q(`+${p.more}`)}` : ''}`,
     category: 'Testing',
     description: 'Test case detail: title, tags, steps with expected results, last results.',
     params: { title: 'User can pay with a saved card', id: 'TC-1042', tags: 'checkout|payments|smoke', steps: 'Open cart with 2 items::Cart shows total|Choose saved card::Card ending 4242 selected|Confirm payment::Order confirmation appears' },
-    rdl: (p) => `TestCase col gap5 p6 wfill fill:surface stroke:border r3
+    rdl: (p) => `TestCase col gap5 p6 wfill fill:surface stroke:border rcard
   Head col gap2
     IdRow row gap2 center
       Id text caption muted mono ${q(p.id!)}

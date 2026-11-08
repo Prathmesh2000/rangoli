@@ -6,7 +6,6 @@ import {
   applyRdl,
   compileRdl,
   contrastRatio,
-  defaultTokens,
   diffDocuments,
   formatDiff,
   formatLint,
@@ -42,6 +41,9 @@ import {
   wcagLevel,
   type LintIssue,
   type RNode,
+  LANGUAGES,
+  languageOf,
+  languageTokens,
 } from '@rangoli/engine';
 import { INSTRUCTIONS, RDL_HELP } from './guide.js';
 import { filmstrip, renderIcons, renderPng, setAssetResolver } from './shots.js';
@@ -312,7 +314,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
   server.registerTool(
     'tokens_set_brand',
     {
-      description: 'Regenerate the whole token system (OKLCH ramps, tinted neutrals, semantic tokens, light/dark) from brand/status seed colors. Undoable.',
+      description: 'Regenerate the whole token system (OKLCH ramps, tinted neutrals, semantic tokens, light/dark) from brand/status seed colors, keeping the current design language. Undoable.',
       inputSchema: {
         brand: z.string().regex(/^#[0-9a-fA-F]{6}$/),
         success: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -321,7 +323,8 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
       },
     },
     safe(({ brand, success, warning, error }) => {
-      const tokens = defaultTokens({ brand, success, warning, error });
+      const lang = languageOf(doc.data.tokens);
+      const tokens = languageTokens(lang.id, { ...lang.options, brand, success, warning, error });
       doc.apply([{ op: 'setTokens', tokens }], { author, label: `brand ${brand}` });
       const r = new TokenResolver(tokens);
       const checks = ['light', 'dark'].map((m) => {
@@ -329,6 +332,42 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
         return `${m}: button text ${c.toFixed(2)}:1 ${wcagLevel(c)}`;
       });
       return text(`Tokens regenerated from ${brand}.\n${checks.join('\n')}`);
+    }),
+  );
+
+  server.registerTool(
+    'design_language',
+    {
+      description: 'Switch the whole design language — type scale & fonts, density (control heights), corner radii, elevation, motion feel — in one undoable step. Every library component and pattern restyles. Omit id to list languages with when to use each. The current brand colour is kept unless you pass brand. Replaces individual token_set tweaks.',
+      inputSchema: {
+        id: z.string().optional(),
+        brand: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        fontSans: z.array(z.string()).optional(),
+        fontDisplay: z.array(z.string()).optional(),
+        keepBrand: z.boolean().optional(),
+      },
+    },
+    safe(({ id, brand, fontSans, fontDisplay, keepBrand }) => {
+      const cur = languageOf(doc.data.tokens);
+      if (!id) {
+        const list = Object.values(LANGUAGES).map((l) => `- ${l.id} — ${l.name}: ${l.feel}\n  Best for: ${l.bestFor}`);
+        return text([`Current: ${cur.id}${cur.options.brand ? ` (brand ${cur.options.brand})` : ''}`, '', ...list].join('\n'));
+      }
+      const overrides = {
+        ...(keepBrand !== false && cur.options.brand ? { brand: cur.options.brand } : {}),
+        ...(brand ? { brand } : {}),
+        ...(fontSans ? { fontSans } : {}),
+        ...(fontDisplay ? { fontDisplay } : {}),
+      };
+      const tokens = languageTokens(id, overrides);
+      doc.apply([{ op: 'setTokens', tokens }], { author, label: 'language ' + id });
+      const r = new TokenResolver(tokens);
+      const px = (p: string) => r.resolve(p) as number;
+      const issues = lint(doc).filter((i) => i.code === 'D03');
+      const radius = px('radius.control') > 999 ? 'pill' : `${px('radius.control')}px`;
+      const body = (r.resolve('textStyle.body') as { fontSize: number }).fontSize;
+      const summary = `${LANGUAGES[id]!.name} applied: controls ${px('size.control.md')}px, control radius ${radius}, body ${body}px.`;
+      return text(`${summary}\n${issues.length ? `Contrast issues after switch:\n${formatLint(issues)}` : 'No contrast issues.'}`);
     }),
   );
 

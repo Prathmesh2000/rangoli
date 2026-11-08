@@ -8,7 +8,9 @@
 import type { ComponentDef, Layout, RNode, Sizing, Style } from './model.js';
 
 const t = (token: string) => ({ token });
-const sz = (h: number, w: Sizing['w'] = { kind: 'hug' }): Sizing => ({ h: { kind: 'fixed', v: h }, w });
+/** control height from the density tokens (size.control.*) */
+const CTL: Record<number, string> = { 24: 'xs', 32: 'sm', 36: 'md', 44: 'lg' };
+const sz = (h: number, w: Sizing['w'] = { kind: 'hug' }): Sizing => ({ h: { kind: 'fixed', v: CTL[h] ? t(`size.control.${CTL[h]}`) : h }, w });
 const row = (gap: string, px?: string, py?: string): Layout => ({ mode: 'row', gap: t(gap), align: 'center', ...(px ? { padding: [py ? t(py) : 0, t(px), py ? t(py) : 0, t(px)] } : {}) });
 
 export interface PropSpec {
@@ -39,13 +41,13 @@ export const LIBRARY: Record<string, Def> = {
     axes: { variant: ['primary', 'secondary', 'ghost', 'danger'], size: ['sm', 'md', 'lg'], state: ['default', 'loading', 'disabled'] },
     defaults: { variant: 'primary', size: 'md', state: 'default' },
     styles: [
-      { when: {}, layout: { mode: 'row', gap: t('space.2'), align: 'center', justify: 'center', padding: [0, t('space.4'), 0, t('space.4')] }, size: sz(36), style: { radius: t('radius.2'), textStyle: t('textStyle.label') } },
+      { when: {}, layout: { mode: 'row', gap: t('space.2'), align: 'center', justify: 'center', padding: [0, t('space.4'), 0, t('space.4')] }, size: sz(36), style: { radius: t('radius.control'), textStyle: t('textStyle.label') } },
       { when: { size: 'sm' }, size: sz(32), layout: { mode: 'row', padding: [0, t('space.3'), 0, t('space.3')] }, style: {} },
       { when: { size: 'lg' }, size: sz(44), layout: { mode: 'row', padding: [0, t('space.5'), 0, t('space.5')] }, style: { textStyle: t('textStyle.body-lg') } },
-      { when: { variant: 'primary' }, style: { fill: [t('color.action.primary')], color: t('color.text.onPrimary') } },
-      { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], color: t('color.text.primary'), stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' } } },
+      { when: { variant: 'primary' }, style: { fill: [t('color.action.primary')], color: t('color.text.onPrimary'), shadow: t('shadow.control') } },
+      { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], color: t('color.text.primary'), stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, shadow: t('shadow.control') } },
       { when: { variant: 'ghost' }, style: { fill: [], color: t('color.text.primary') } },
-      { when: { variant: 'danger' }, style: { fill: [t('color.action.danger')], color: t('color.text.onDanger') } },
+      { when: { variant: 'danger' }, style: { fill: [t('color.action.danger')], color: t('color.text.onDanger'), shadow: t('shadow.control') } },
     ],
     doc: { category: 'Actions', description: 'Primary, secondary, ghost or destructive action. One primary per view. state=loading shows a spinner.', example: '@Button variant=primary "Run tests"' },
   },
@@ -54,9 +56,9 @@ export const LIBRARY: Record<string, Def> = {
     axes: { variant: ['ghost', 'secondary', 'primary'], size: ['sm', 'md', 'lg'] },
     defaults: { variant: 'ghost', size: 'md' },
     styles: [
-      { when: {}, layout: { mode: 'row', align: 'center', justify: 'center' }, size: { w: { kind: 'fixed', v: 36 }, h: { kind: 'fixed', v: 36 } }, style: { radius: t('radius.2'), color: t('color.text.secondary'), fill: [] } },
+      { when: {}, layout: { mode: 'row', align: 'center', justify: 'center' }, size: { w: { kind: 'fixed', v: t('size.control.md') }, h: { kind: 'fixed', v: t('size.control.md') } }, style: { radius: t('radius.control'), color: t('color.text.secondary'), fill: [] } },
       { when: { size: 'sm' }, size: { w: { kind: 'fixed', v: 28 }, h: { kind: 'fixed', v: 28 } }, style: {} },
-      { when: { size: 'lg' }, size: { w: { kind: 'fixed', v: 44 }, h: { kind: 'fixed', v: 44 } }, style: {} },
+      { when: { size: 'lg' }, size: { w: { kind: 'fixed', v: t('size.control.lg') }, h: { kind: 'fixed', v: t('size.control.lg') } }, style: {} },
       { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, color: t('color.text.primary') } },
       { when: { variant: 'primary' }, style: { fill: [t('color.action.primary')], color: t('color.text.onPrimary') } },
     ],
@@ -80,7 +82,7 @@ export const LIBRARY: Record<string, Def> = {
     axes: { size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
     defaults: { size: 'md', state: 'default' },
     styles: [
-      { when: {}, layout: row('space.2', 'space.3'), size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.2'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
+      { when: {}, layout: row('space.2', 'space.3'), size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
       { when: { size: 'sm' }, size: sz(32, { kind: 'fill' }), style: {} },
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
@@ -92,7 +94,7 @@ export const LIBRARY: Record<string, Def> = {
     axes: { state: ['default', 'error', 'disabled'] },
     defaults: { state: 'default' },
     styles: [
-      { when: {}, layout: { mode: 'col', padding: [t('space.2'), t('space.3'), t('space.2'), t('space.3')] }, size: { w: { kind: 'fill' }, h: { kind: 'fixed', v: 96 } }, style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.2'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
+      { when: {}, layout: { mode: 'col', padding: [t('space.2'), t('space.3'), t('space.2'), t('space.3')] }, size: { w: { kind: 'fill' }, h: { kind: 'fixed', v: 96 } }, style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
     ],
@@ -103,7 +105,7 @@ export const LIBRARY: Record<string, Def> = {
     axes: { size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
     defaults: { size: 'md', state: 'default' },
     styles: [
-      { when: {}, layout: { mode: 'row', align: 'center', justify: 'between', gap: t('space.2'), padding: [0, t('space.2'), 0, t('space.3')] }, size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.2'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
+      { when: {}, layout: { mode: 'row', align: 'center', justify: 'between', gap: t('space.2'), padding: [0, t('space.2'), 0, t('space.3')] }, size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
       { when: { size: 'sm' }, size: sz(32, { kind: 'fill' }), style: {} },
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
@@ -115,7 +117,7 @@ export const LIBRARY: Record<string, Def> = {
     axes: { size: ['sm', 'md'] },
     defaults: { size: 'md' },
     styles: [
-      { when: {}, layout: row('space.2', 'space.3'), size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.2'), textStyle: t('textStyle.body'), color: t('color.text.secondary') } },
+      { when: {}, layout: row('space.2', 'space.3'), size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.secondary') } },
       { when: { size: 'sm' }, size: sz(32, { kind: 'fill' }), style: {} },
     ],
     doc: { category: 'Inputs', description: 'Search field with icon and optional shortcut hint.', props: { shortcut: { type: 'string', description: 'e.g. ⌘K or /' } }, example: '@SearchInput shortcut=/ "Search test cases"' },
@@ -152,7 +154,7 @@ export const LIBRARY: Record<string, Def> = {
     id: 'Segmented', name: 'Segmented', tag: 'div', role: 'tablist', labelProp: 'items', anatomy: 'segmented',
     axes: { size: ['sm', 'md'] },
     defaults: { size: 'md' },
-    styles: [{ when: {}, layout: { mode: 'row', gap: t('space.0.5'), padding: [t('space.0.5'), t('space.0.5'), t('space.0.5'), t('space.0.5')] }, size: { w: { kind: 'hug' } }, style: { fill: [t('color.bg.subtle')], radius: t('radius.2'), textStyle: t('textStyle.label') } }],
+    styles: [{ when: {}, layout: { mode: 'row', gap: t('space.0.5'), padding: [t('space.0.5'), t('space.0.5'), t('space.0.5'), t('space.0.5')] }, size: { w: { kind: 'hug' } }, style: { fill: [t('color.bg.subtle')], radius: t('radius.control'), textStyle: t('textStyle.label') } }],
     doc: { category: 'Inputs', description: 'Compact switch between 2–5 views. Quoted text = items separated by |.', props: { selected: { type: 'number', default: 0, description: 'selected index' } }, example: '@Segmented selected=0 "List|Board|Timeline"' },
   },
   Rating: {
@@ -313,7 +315,7 @@ export const LIBRARY: Record<string, Def> = {
     axes: { variant: ['info', 'success', 'warning', 'error'] },
     defaults: { variant: 'info' },
     styles: [
-      { when: {}, layout: { mode: 'row', gap: t('space.3'), align: 'start', padding: [t('space.3'), t('space.4'), t('space.3'), t('space.3')] }, size: { w: { kind: 'fill' } }, style: { radius: t('radius.3'), textStyle: t('textStyle.body-sm') } },
+      { when: {}, layout: { mode: 'row', gap: t('space.3'), align: 'start', padding: [t('space.3'), t('space.4'), t('space.3'), t('space.3')] }, size: { w: { kind: 'fill' } }, style: { radius: t('radius.card'), textStyle: t('textStyle.body-sm') } },
       ...(['info', 'success', 'warning', 'error'] as const).map((v) => ({ when: { variant: v }, style: { fill: [t(`color.status.${v}.bg`)], color: t(`color.status.${v}.fg`) } as Style })),
     ],
     doc: { category: 'Feedback', description: 'Inline message about the page/section. title= optional; dismissible=true adds close.', props: { title: { type: 'string', description: 'bold first line' }, dismissible: { type: 'boolean', default: false, description: 'close button' } }, example: '@Alert variant=warning title="3 tests are flaky" "They failed in 2 of the last 10 runs."' },
@@ -322,7 +324,7 @@ export const LIBRARY: Record<string, Def> = {
     id: 'Toast', name: 'Toast', tag: 'div', role: 'status', labelProp: 'label', anatomy: 'toast',
     axes: { variant: ['neutral', 'success', 'error'] },
     defaults: { variant: 'neutral' },
-    styles: [{ when: {}, layout: { mode: 'row', gap: t('space.3'), align: 'center', padding: [t('space.2'), t('space.2'), t('space.2'), t('space.4')] }, size: { w: { kind: 'hug' }, minW: 280, maxW: 420 }, style: { radius: t('radius.3'), fill: [t('color.bg.inverse')], color: t('color.bg.surface'), textStyle: t('textStyle.body-sm'), shadow: t('shadow.lg') } }],
+    styles: [{ when: {}, layout: { mode: 'row', gap: t('space.3'), align: 'center', padding: [t('space.2'), t('space.2'), t('space.2'), t('space.4')] }, size: { w: { kind: 'hug' }, minW: 280, maxW: 420 }, style: { radius: t('radius.card'), fill: [t('color.bg.inverse')], color: t('color.bg.surface'), textStyle: t('textStyle.body-sm'), shadow: t('shadow.lg') } }],
     doc: { category: 'Feedback', description: 'Brief confirmation of a background action. action= adds a text button (e.g. Undo).', props: { action: { type: 'string', description: 'e.g. Undo' } }, example: '@Toast variant=success action=Undo "Run deleted"' },
   },
 };
@@ -491,11 +493,11 @@ export const COMPONENT_CSS: Record<string, string> = {
   Textarea: `.rc-Textarea{border:0;resize:vertical;font:inherit;outline:0}.rc-Textarea::placeholder{color:${v('color.text.disabled')}}.rc-Textarea:focus-visible{box-shadow:inset 0 0 0 2px ${v('color.border.focus')}}`,
   Select: `.rc-Select{border:0;cursor:pointer;text-align:left}.rc-Select .rk-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-Select .is-placeholder{color:${v('color.text.disabled')}}.rc-Select svg{flex-shrink:0;color:${v('color.text.secondary')}}.rc-Select:disabled{cursor:not-allowed}`,
   SearchInput: `.rc-SearchInput .rk-value{flex:1;min-width:0}.rc-SearchInput svg{flex-shrink:0}.rc-SearchInput .rk-kbd{font:500 11px/18px ${v('font.family.mono')};padding:0 6px;border-radius:4px;box-shadow:inset 0 0 0 1px ${v('color.border.default')};color:${v('color.text.secondary')}}`,
-  Checkbox: `.rc-Checkbox{cursor:pointer}.rc-Checkbox .rk-box{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;box-shadow:inset 0 0 0 1.5px ${v('color.border.strong')};background:${v('color.bg.surface')};color:${v('color.text.onPrimary')};flex-shrink:0}.rc-Checkbox .rk-box.is-on{background:${v('color.action.primary')};box-shadow:none}.rc-Checkbox svg{width:12px;height:12px}`,
+  Checkbox: `.rc-Checkbox{cursor:pointer}.rc-Checkbox .rk-box{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:min(${v('radius.1')}, 5px);box-shadow:inset 0 0 0 1.5px ${v('color.border.strong')};background:${v('color.bg.surface')};color:${v('color.text.onPrimary')};flex-shrink:0}.rc-Checkbox .rk-box.is-on{background:${v('color.action.primary')};box-shadow:none}.rc-Checkbox svg{width:12px;height:12px}`,
   Radio: `.rc-Radio{cursor:pointer}.rc-Radio .rk-radio{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1.5px ${v('color.border.strong')};background:${v('color.bg.surface')};flex-shrink:0}.rc-Radio .rk-radio.is-on{box-shadow:inset 0 0 0 5px ${v('color.action.primary')}}`,
-  Switch: `.rc-Switch{cursor:pointer}.rc-Switch .rk-switch{position:relative;width:32px;height:18px;border-radius:9px;background:${v('color.border.strong')};flex-shrink:0;transition:background-color 120ms}.rc-Switch .rk-switch.is-on{background:${v('color.action.primary')}}.rc-Switch .rk-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform 120ms}.rc-Switch .is-on .rk-thumb{transform:translateX(14px)}`,
+  Switch: `.rc-Switch{cursor:pointer}.rc-Switch .rk-switch{position:relative;width:32px;height:18px;border-radius:9px;background:${v('color.bg.track')};flex-shrink:0;transition:background-color 120ms}.rc-Switch .rk-switch.is-on{background:${v('color.action.primary')}}.rc-Switch .rk-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform 120ms}.rc-Switch .is-on .rk-thumb{transform:translateX(14px)}`,
   Slider: `.rc-Slider .rk-row{display:flex;justify-content:space-between}.rc-Slider .rk-num{font-variant-numeric:tabular-nums;color:${v('color.text.primary')}}.rc-Slider .rk-track{position:relative;display:block;height:4px;border-radius:2px;background:${v('color.border.default')};margin:6px 0}.rc-Slider .rk-fill{position:absolute;inset:0 auto 0 0;border-radius:2px;background:${v('color.action.primary')}}.rc-Slider .rk-knob{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:${v('color.bg.surface')};box-shadow:0 0 0 1.5px ${v('color.action.primary')},0 1px 3px rgba(0,0,0,.2);transform:translate(-50%,-50%)}`,
-  Segmented: `.rc-Segmented .rk-seg{padding:4px 12px;border-radius:4px;color:${v('color.text.secondary')};cursor:pointer;white-space:nowrap}.rc-Segmented .rk-seg.is-on{background:${v('color.bg.surface')};color:${v('color.text.primary')};box-shadow:0 1px 2px rgba(16,24,40,.08)}`,
+  Segmented: `.rc-Segmented .rk-seg{padding:4px 12px;border-radius:${v('radius.1')};color:${v('color.text.secondary')};cursor:pointer;white-space:nowrap}.rc-Segmented .rk-seg.is-on{background:${v('color.bg.surface')};color:${v('color.text.primary')};box-shadow:0 1px 2px rgba(16,24,40,.08)}`,
   Rating: `.rc-Rating svg{display:block}`,
   Badge: `.rc-Badge{font-variant-numeric:tabular-nums;line-height:1}`,
   Tag: `.rc-Tag .rk-remove{display:inline-grid;place-items:center;margin-right:-4px;width:16px;height:16px;border-radius:3px;color:${v('color.text.secondary')};cursor:pointer}.rc-Tag .rk-remove:hover{background:${v('color.bg.subtle')}}`,

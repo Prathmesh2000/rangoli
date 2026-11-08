@@ -340,7 +340,7 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if (f === 'start' || f === 'center' || f === 'end' || f === 'stretch' || f === 'baseline') { layout().align = f; continue; }
     if (f === 'middle') { layout().align = 'center'; layout().justify = 'center'; continue; }
     if ((m = /^cols(\d+)$/.exec(f))) { layout().mode = 'grid'; layout().columns = Number(m[1]); continue; }
-    if ((m = /^r(\d+(?:\.\d+)?(?:px)?|full)$/.exec(f))) { const v = lenFrom('radius', m[1]!, ctx, line, diag); if (v !== undefined) style().radius = v; continue; }
+    if ((m = /^r(\d+(?:\.\d+)?(?:px)?|full|card|control)$/.exec(f))) { const v = lenFrom('radius', m[1]!, ctx, line, diag); if (v !== undefined) style().radius = v; continue; }
     if ((m = /^(fill|bg):(.+)$/.exec(f))) {
       if (m[2] === 'none') { style().fill = []; continue; }
       const p = paintFrom(m[2]!, ctx, line, diag);
