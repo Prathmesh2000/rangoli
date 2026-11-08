@@ -21,6 +21,11 @@ RDL quick reference (one node per line, indentation = children):
     abs at:x,y (float inside any parent: badges, stickers, overlays) · css:"filter:grayscale(1)" (plain declarations only)
 - draw with a pen: Shape w120 h40 d:"M2 20 Q32 2 60 20 T118 20" stroke:primary.600/3  (SVG path, coords in vb:w,h — default = size)
     or shape language: Logo w48 h48 vb:24,24 shapes:"circle 12 12 10 fill=true c=primary.600|polyline 7 12 11 16 17 8" stroke:white/2
+- your own components (nothing is fixed):
+    restyle / add variants:  component @Button  then lines  "variant=pill rfull px6 fill:success.600" · "* shadow:md" (all) · "component @Button reset"
+    building block from layers:  component @PlanCard from #n12 ["description"] [keep] → text/icon/image layers become props by
+      layer name (@PlanCard "Team" price="$49" note=none mark=ui/star). Linked: component @PlanCard detach #id → edit → from #id updates all.
+    components_list shows them under "This document"; component_help shows slots and your rules.
 - design language: design_language (no id = list) switches type, density, radii, elevation and motion for every component at once:
     rangoli material fluent cupertino carbon editorial playful brutalist dense. Pick one that fits the product before styling by hand.
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)

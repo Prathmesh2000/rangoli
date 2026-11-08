@@ -2,9 +2,9 @@
  * Reference renderer: model → semantic HTML + CSS (flex/grid). Tokens are emitted as CSS variables,
  * so modes (light/dark) switch with a data attribute and no re-render.
  */
-import { resolveInstance } from './components.js';
+import { expandTemplate, resolveInstance } from './components.js';
 import type { RangoliDocument } from './document.js';
-import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style } from './model.js';
+import { isTokenRef, type ComponentDef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style } from './model.js';
 import { cssVarName, TokenResolver, tokensToCss } from './tokens.js';
 import { motionCss } from './motion.js';
 import { compileIcon, findIcon } from './icons.js';
@@ -56,14 +56,47 @@ class Renderer {
     this.tokens = new TokenResolver(doc.data.tokens);
   }
 
+  /** expanded template layers (instance id + "_" + template id) while an instance renders */
+  private extra: Record<string, RNode> = {};
+  /** layer id → id the editor should select (template internals select their instance) */
+  private rid: Record<string, string> = {};
+  private compClass: Record<string, string> = {};
+  private building = new Set<string>();
+
+  private lookup(id: string): RNode | undefined {
+    return this.extra[id] ?? this.doc.page(this.opts.page).nodes[id];
+  }
+
+  /** A building-block instance: render the component's layers with slot props filled in. */
+  private templateInstance(n: RNode, comp: ComponentDef, parentLayout: Layout | undefined, inInline: boolean): string {
+    if (this.building.has(comp.id)) return ''; // a component cannot contain itself
+    // root = template root + component rules (component @X block) + this instance's own overrides
+    const { root, nodes: map } = expandTemplate(n, comp, (tid) => `${n.id}_${tid}`);
+    for (const id of Object.keys(map)) if (id !== n.id) this.rid[id] = this.rid[n.id] ?? n.id;
+    this.compClass[n.id] = comp.id;
+    Object.assign(this.extra, map);
+    this.building.add(comp.id);
+    try {
+      return this.node(root, parentLayout, inInline);
+    } finally {
+      this.building.delete(comp.id);
+      for (const id of Object.keys(map)) delete this.extra[id];
+    }
+  }
+
   node(n: RNode, parentLayout: Layout | undefined, inInline: boolean): string {
+    if (n.type === 'instance' && n.component) {
+      const comp = this.doc.data.components[n.component];
+      if (comp?.template) return this.templateInstance(n, comp, parentLayout, inInline);
+    }
     const decls: string[] = [];
     let layout = n.layout;
     let size = n.size;
     let style: Style = n.style ?? {};
     let tag = 'div';
-    const attrs: string[] = [`class="r-${n.id}${n.component ? ` rc-${n.component}` : ''}"`];
-    if (this.opts.editorAttrs) attrs.push(`data-rid="${n.id}"`);
+    const cc = n.component ?? this.compClass[n.id];
+    const attrs: string[] = [`class="r-${n.id}${cc ? ` rc-${cc}` : ''}"`];
+    if (this.opts.editorAttrs) attrs.push(`data-rid="${this.rid[n.id] ?? n.id}"`);
     let inner = '';
 
     if (n.type === 'instance' && n.component) {
@@ -103,8 +136,7 @@ class Renderer {
     this.sizeDecls(size, parentLayout, decls, n.type === 'text');
     if ((parentLayout?.mode === 'none' || n.absolute) && n.position) decls.push('position:absolute', `left:${n.position.x}px`, `top:${n.position.y}px`);
     // containers with absolutely placed children become the positioning context
-    const pageNodes = this.doc.page(this.opts.page).nodes;
-    if (layout?.mode !== 'none' && n.children?.some((c) => pageNodes[c]?.absolute)) decls.push('position:relative');
+    if (layout?.mode !== 'none' && n.children?.some((c) => this.lookup(c)?.absolute)) decls.push('position:relative');
     // vectors paint their paths themselves (fill/stroke go to the SVG, not the box)
     const vectorPaths = n.type === 'vector' && !!n.vector && !n.icon;
     this.styleDecls(vectorPaths ? { ...style, fill: undefined, stroke: undefined } : style, decls, !!n.absolute);
@@ -183,7 +215,7 @@ class Renderer {
     const childInline = inInline || tag === 'button' || tag === 'span' || tag === 'a';
     let kids = '';
     for (const cid of n.children ?? []) {
-      const c = this.doc.page(this.opts.page).nodes[cid];
+      const c = this.lookup(cid);
       if (c) kids += this.node(c, n.type === 'text' ? undefined : layout, childInline);
     }
     // component children (e.g. an icon inside a button) lead the label

@@ -44,6 +44,7 @@ import {
   LANGUAGES,
   languageOf,
   languageTokens,
+  componentRdl,
 } from '@rangoli/engine';
 import { INSTRUCTIONS, RDL_HELP } from './guide.js';
 import { filmstrip, renderIcons, renderPng, setAssetResolver } from './shots.js';
@@ -793,17 +794,40 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
         const props = Object.keys(d.doc.props ?? {}).join(',');
         byCat.set(d.doc.category, [...(byCat.get(d.doc.category) ?? []), `  ${d.doc.example}${axes ? `   [${axes}]` : ''}${props ? ` props:${props}` : ''}`]);
       }
+      // the document's own building blocks and restyled library components
+      const mine = Object.values(doc.data.components)
+        .filter((c) => !LIBRARY[c.id] || c.styles.some((r) => r.user))
+        .map((c) => {
+          if (c.template) return `  @${c.id} ${Object.keys(c.slots ?? {}).map((s) => `${s}=…`).join(' ')}${c.description ? `   — ${c.description}` : ''}  (building block)`;
+          const added = Object.entries(c.axes).map(([k, vs]) => [k, vs.filter((v) => !LIBRARY[c.id]?.axes[k]?.includes(v))] as const).filter(([, vs]) => vs.length);
+          return `  @${c.id} restyled${added.length ? `, your variants ${added.map(([k, vs]) => `${k}:${vs.join('|')}`).join(' ')}` : ''}`;
+        });
+      if (!category && mine.length) byCat.set('This document', mine);
       return text([...byCat].map(([c, l]) => `${c}\n${l.join('\n')}`).join('\n'));
     }),
   );
 
   server.registerTool(
     'component_help',
-    { description: 'Details for one component: purpose, axes, props, example.', inputSchema: { name: z.string() } },
+    { description: 'Details for one component (library or this document\'s own): purpose, axes, props/slots, your customisations as an editable "component @X" block, example.', inputSchema: { name: z.string() } },
     safe(({ name }) => {
-      const d = LIBRARY[name];
-      if (!d) throw new Error(`No component "${name}". Known: ${Object.keys(LIBRARY).join(', ')}`);
-      return text([`@${name} — ${d.doc.description}`, `axes: ${Object.entries(d.axes).map(([k, vs]) => `${k}=${vs.join('|')} (default ${d.defaults[k]})`).join('; ') || 'none'}`, `quoted text = ${d.labelProp ?? 'label'}`, ...Object.entries(d.doc.props ?? {}).map(([k, p]) => `prop ${k} (${p.type}${p.default !== undefined ? `, default ${p.default}` : ''}): ${p.description}`), `example: ${d.doc.example}`].join('\n'));
+      const id = name.replace(/^@/, '');
+      const live = doc.data.components[id];
+      const d = LIBRARY[id];
+      if (!live) throw new Error(`No component "${name}". Known: ${Object.keys(doc.data.components).join(', ')}`);
+      const axes = `axes: ${Object.entries(live.axes).map(([k, vs]) => `${k}=${vs.join('|')} (default ${live.defaults[k]})`).join('; ') || 'none'}`;
+      const custom = componentRdl(doc, id);
+      const lines = live.template
+        ? [
+            `@${id} — building block${live.description ? `: ${live.description}` : ''} (${Object.keys(live.template.nodes).length} layers, linked)`,
+            axes,
+            `quoted text = ${live.labelProp ?? '(none)'}`,
+            ...Object.entries(live.slots ?? {}).map(([s, v]) => `slot ${s} (${v.kind}): ${s}=${v.kind === 'icon' ? 'ui/star' : v.kind === 'image' ? '<asset id>' : '"text"'} · ${s}=none hides it`),
+            `edit: component @${id} detach #<instance> → change the layers → component @${id} from #<that id> (updates every instance)`,
+          ]
+        : [`@${id} — ${d?.doc.description ?? ''}`, axes, `quoted text = ${live.labelProp ?? 'label'}`, ...Object.entries(d?.doc.props ?? {}).map(([k, p]) => `prop ${k} (${p.type}${p.default !== undefined ? `, default ${p.default}` : ''}): ${p.description}`), ...(d ? [`example: ${d.doc.example}`] : [])];
+      if (custom) lines.push('your customisations (edit and re-apply, or "component @' + id + ' reset"):', custom);
+      return text(lines.join('\n'));
     }),
   );
 

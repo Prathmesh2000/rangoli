@@ -1,0 +1,23 @@
+Pricing row gap4 p6 fill:canvas
+  Plan col gap3 p5 w260 fill:surface stroke:border rcard
+    Tier text label muted "Starter"
+    Price text headline "$0"
+    Blurb text body-sm muted "For side projects and trying things out."
+    Perks col gap2
+      Perk row gap2 center
+        Tick icon:check w16 h16 color:status.success.fg
+        Perk text name:"Perk text" body-sm "Unlimited test runs"
+    @Button variant=secondary wfill "Choose plan"
+component @PlanCard from #n2 "Pricing tier"
+component @PlanCard
+  tone=featured fill:status.info.bg stroke:primary.600/2 shadow:md
+component @Button
+  variant=pill rfull px6
+insert #n1 start
+  Intro col gap1 w220
+    Title text title "Plans"
+    Sub text body-sm muted "Every plan includes unlimited seats."
+    @Button variant=pill "Talk to sales"
+insert #n1 end
+  @PlanCard tier="Team" price="$49" blurb="For teams shipping every day." perk-text="Parallel runs + flaky detection"
+  @PlanCard tone=featured tier="Scale" price="$199" blurb="SSO, audit log and priority support." perk-text="Everything in Team"

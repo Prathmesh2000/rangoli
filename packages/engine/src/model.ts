@@ -172,15 +172,20 @@ export interface ComponentDef {
   /** text prop name used for quoted label text in RDL (e.g. "label") */
   labelProp?: string;
   /** Base style per variant combination key "variant=primary,size=sm" (partial match allowed) */
-  styles: { when: Record<string, string>; style: Style; layout?: Layout; size?: Sizing }[];
+  styles: { when: Record<string, string>; style: Style; layout?: Partial<Layout>; size?: Sizing; /** added by the user (component block); survives library upgrades */ user?: boolean }[];
   /** semantic HTML tag hint for neutral rendering */
   tag?: string;
   /** role hint */
   role?: string;
   /** built-in inner-markup renderer key (checkbox box, switch track, tabs list …) */
   anatomy?: string;
-  /** user-customised definition: never replaced by library upgrades */
+  /** user-made component (template or fork): never replaced by library upgrades */
   custom?: boolean;
+  /** building block made from layers: instances render this subtree (linked — edit once, all update) */
+  template?: { root: string; nodes: Record<string, RNode> };
+  /** props that fill named layers of the template: text, icon ref, image asset — or false/"none" to hide */
+  slots?: Record<string, { node: string; kind: 'text' | 'icon' | 'image' | 'layer' }>;
+  description?: string;
 }
 
 export interface Manifest {

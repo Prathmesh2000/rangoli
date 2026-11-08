@@ -10,13 +10,15 @@
  *                 move #id (into #p [start|end] | before #x | after #x) | delete #id | replace #id + block
  */
 import { RangoliDocument, RangoliError, type Op } from './document.js';
-import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
+import { isTokenRef, type ComponentDef, type Dim, type Layout, type Len, type Page, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
 import { TokenResolver } from './tokens.js';
 import { parseMotionLines, targetKey } from './motion.js';
 import { parseProtoLines, parseTimelineLines } from './prototype.js';
 import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
 import { findAsset } from './images.js';
 import { expandPatterns } from './patterns.js';
+import { libraryComponents } from './library.js';
+import { expandTemplate, slotName } from './components.js';
 
 export interface Diagnostic {
   line: number;
@@ -96,7 +98,8 @@ export type Command =
   | { kind: 'proto'; line: number; node: string | null; start?: string; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'iconset'; line: number; name: string; opts: string[] }
-  | { kind: 'icon'; line: number; set: string; name: string; opts: string[]; lines: { no: number; toks: string[] }[] };
+  | { kind: 'icon'; line: number; set: string; name: string; opts: string[]; lines: { no: number; toks: string[] }[] }
+  | { kind: 'component'; line: number; name: string; from?: string; detach?: string; opts: string[]; description?: string; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
 
@@ -107,7 +110,8 @@ const isCommandLine = (ln: Line) =>
   (ln.toks[0] === 'proto' && /^(#|start$)/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4) ||
   (ln.toks[0] === 'icon' && /^[\w-]+\/[\w~.-]+$/.test(ln.toks[1] ?? '')) ||
-  (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? ''));
+  (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'component' && /^@[A-Za-z][\w-]*$/.test(ln.toks[1] ?? ''));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
   const lines = lex(expandPatterns(src));
@@ -149,6 +153,28 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
         i++;
       }
       commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
+    if (kw === 'component' && isCommandLine(ln)) {
+      i++;
+      const body: { no: number; toks: string[] }[] = [];
+      while (i < lines.length && lines[i]!.indent > ln.indent) {
+        body.push({ no: lines[i]!.no, toks: lines[i]!.toks });
+        i++;
+      }
+      const head = ln.toks.slice(2);
+      let from: string | undefined;
+      let detach: string | undefined;
+      let description: string | undefined;
+      const opts: string[] = [];
+      for (let k = 0; k < head.length; k++) {
+        const t = head[k]!;
+        if (t === 'from') from = head[++k]?.replace(/^#/, '');
+        else if (t === 'detach') detach = head[++k]?.replace(/^#/, '');
+        else if (t.startsWith('"')) description = unquote(t);
+        else opts.push(t);
+      }
+      commands.push({ kind: 'component', line: ln.no, name: ln.toks[1]!.slice(1), from, detach, opts, description, lines: body });
       continue;
     }
     if ((kw === 'icon' || kw === 'iconset') && isCommandLine(ln)) {
@@ -475,6 +501,8 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
       if (comp && key in comp.axes) {
         if (!comp.axes[key]!.includes(String(val))) diag.push({ line, severity: 'error', message: `${comp.name}.${key} must be one of: ${comp.axes[key]!.join(', ')}` });
         else (node.variant ??= {})[key] = String(val);
+      } else if (comp?.template && !comp.slots?.[key]) {
+        diag.push({ line, severity: 'error', message: `@${comp.name} has no slot "${key}" — slots: ${Object.keys(comp.slots ?? {}).join(', ') || 'none'}${Object.keys(comp.axes).length ? `; axes: ${Object.keys(comp.axes).join(', ')}` : ''}` });
       } else (node.props ??= {})[key] = val;
       continue;
     }
@@ -675,6 +703,10 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         ops.push({ op: 'setMotion', target: key, def: { target: key, specs: merged } });
         break;
       }
+      case 'component': {
+        compileComponent(doc, cmd, ctx, page, ops, errors);
+        break;
+      }
       case 'iconset': {
         const prev = doc.data.icons?.[cmd.name];
         if (cmd.opts.includes('none')) { ops.push({ op: 'setIconSet', name: cmd.name, def: null }); break; }
@@ -803,6 +835,138 @@ export function applyRdl(doc: RangoliDocument, src: string, opts: CompileOptions
     { author: opts.author, label: opts.label },
   );
   return { created, touched: [...touched], warnings };
+}
+
+// ---------------------------------------------------------------- components
+
+const LIB_IDS = new Set(Object.keys(libraryComponents()));
+
+/**
+ * component @Name                     restyle / add variants:  "variant=pill rfull px6" · "* shadow:md" (all instances)
+ * component @Name from #id [keep]     building block from layers (text/icon/image layers become props); the
+ *                                     layers are replaced by a linked instance unless "keep". Again = update.
+ * component @Name reset               drop your rules (library components return to the library look)
+ * component @Name none                delete a user component (must be unused)
+ */
+function compileComponent(doc: RangoliDocument, cmd: Extract<Command, { kind: 'component' }>, ctx: RdlContext, page: Page, ops: Op[], errors: Diagnostic[]) {
+  const err = (message: string, line = cmd.line) => errors.push({ line, severity: 'error', message });
+  const existing = doc.data.components[cmd.name];
+  for (const o of cmd.opts) if (!['keep', 'reset', 'none'].includes(o)) err(`component option "${o}" — use: from #id [keep] · reset · none`);
+
+  if (cmd.opts.includes('none')) {
+    if (!existing) return err(`@${cmd.name} not found`);
+    if (LIB_IDS.has(cmd.name)) return err(`@${cmd.name} is a library component — use "component @${cmd.name} reset" to undo your changes`);
+    const used = Object.values(doc.data.pages).flatMap((p) => Object.values(p.nodes)).filter((n) => n.component === cmd.name);
+    if (used.length) return err(`@${cmd.name} is used by ${used.length} layer(s) (#${used.slice(0, 3).map((n) => n.id).join(', #')}) — delete or detach them first`);
+    ops.push({ op: 'deleteComponent', id: cmd.name });
+    return;
+  }
+  if (cmd.detach) {
+    // instance → real, editable layers (edit, then "component @X from #id" pushes the change to every instance)
+    const inst = page.nodes[cmd.detach];
+    if (!inst) return err(`#${cmd.detach} not found`);
+    if (inst.component !== cmd.name || !existing?.template) return err(`#${cmd.detach} is not an instance of a building block @${cmd.name}`);
+    const fresh: Record<string, string> = {};
+    const { root, nodes } = expandTemplate(inst, existing, (tid) => (fresh[tid] ??= doc.ids.make()));
+    const siblings = inst.parent ? page.nodes[inst.parent]!.children ?? [] : page.children;
+    const index = siblings.indexOf(inst.id);
+    ops.push({ op: 'delete', page: page.id, id: inst.id });
+    const emit = (n: RNode, parent: string | undefined, at: number | undefined) => {
+      const { children, ...rest } = n;
+      ops.push({ op: 'create', page: page.id, node: { ...rest, parent } as RNode, parent, index: at });
+      for (const c of children ?? []) if (nodes[c]) emit(nodes[c]!, n.id, undefined);
+    };
+    emit(root, inst.parent, index);
+    return;
+  }
+  if (cmd.opts.includes('reset')) {
+    if (!existing) return err(`@${cmd.name} not found`);
+    const lib = libraryComponents()[cmd.name];
+    ops.push({ op: 'setComponent', component: lib ?? { ...existing, styles: existing.styles.filter((r) => !r.user) } });
+    return;
+  }
+
+  let def: ComponentDef;
+  if (cmd.from) {
+    const src = page.nodes[cmd.from];
+    if (!src) return err(`#${cmd.from} not found`);
+    if (existing && !existing.template) return err(`@${cmd.name} already exists as a ${LIB_IDS.has(cmd.name) ? 'library' : 'user'} component — pick another name`);
+    if (src.type === 'instance' && src.component === cmd.name) return err(`#${cmd.from} is already an instance of @${cmd.name}`);
+    const { template, slots } = snapshotTemplate(page, src.id);
+    const firstText = Object.entries(slots).find(([, v]) => v.kind === 'text')?.[0];
+    def = existing
+      ? { ...structuredClone(existing), template, slots, labelProp: firstText, ...(cmd.description ? { description: cmd.description } : {}) }
+      : { id: cmd.name, name: cmd.name, axes: {}, defaults: {}, styles: [], custom: true, template, slots, labelProp: firstText, ...(cmd.description ? { description: cmd.description } : {}) };
+    if (!cmd.opts.includes('keep')) {
+      // the source layers become a linked instance (same id, so links and prototype hooks keep working)
+      const siblings = src.parent ? page.nodes[src.parent]!.children ?? [] : page.children;
+      const index = siblings.indexOf(src.id);
+      const inst: RNode = { id: src.id, type: 'instance', name: src.name, component: cmd.name, parent: src.parent };
+      if (src.position) inst.position = src.position;
+      if (src.absolute) inst.absolute = true;
+      ops.push({ op: 'delete', page: page.id, id: src.id }, { op: 'create', page: page.id, node: inst, parent: src.parent, index });
+    }
+  } else {
+    if (!existing) return err(`@${cmd.name} not found — make one from layers with "component @${cmd.name} from #id"`);
+    def = structuredClone(existing);
+  }
+  if (cmd.description && !cmd.from) def.description = cmd.description;
+
+  // rule lines: "<axis=value[,axis=value]>|* flags…"
+  for (const l of cmd.lines) {
+    const [sel, ...flags] = l.toks;
+    if (!sel) continue;
+    const when: Record<string, string> = {};
+    if (sel !== '*') {
+      for (const part of sel.split(',')) {
+        const m = /^([\w-]+)=([\w-]+)$/.exec(part);
+        if (!m) { err(`rule must start with axis=value (e.g. variant=pill) or * for all — got "${sel}"`, l.no); continue; }
+        when[m[1]!] = m[2]!;
+        // a brand-new axis starts with a neutral "default" value, so existing instances keep their look
+        const vals = (def.axes[m[1]!] ??= m[2] === 'default' ? [] : ['default']);
+        if (!vals.includes(m[2]!)) vals.push(m[2]!); // new variant value
+        def.defaults[m[1]!] ??= vals[0]!;
+      }
+    }
+    if (!flags.length) { err(`rule "${sel}" has no styles — add flags like "rfull px6 fill:primary.700"`, l.no); continue; }
+    const scratch: RNode = { id: '_', type: 'frame', name: '_' };
+    applyFlags(scratch, flags.filter((f) => !f.startsWith('"')), undefined, ctx, l.no, errors);
+    const explicitMode = flags.some((f) => ['row', 'col', 'grid', 'none'].includes(f));
+    const layout = scratch.layout ? { ...scratch.layout } as Partial<Layout> : undefined;
+    if (layout && !explicitMode) delete layout.mode;
+    const key = JSON.stringify(when);
+    const prev = def.styles.find((r) => r.user && JSON.stringify(r.when) === key);
+    if (prev) {
+      prev.style = { ...prev.style, ...scratch.style };
+      if (layout) prev.layout = { ...prev.layout, ...layout };
+      if (scratch.size) prev.size = { ...prev.size, ...scratch.size };
+    } else def.styles.push({ when, style: scratch.style ?? {}, ...(layout ? { layout } : {}), ...(scratch.size ? { size: scratch.size } : {}), user: true });
+  }
+  ops.push({ op: 'setComponent', component: def });
+}
+
+/** Copy a subtree into template ids t1…, and find its slots (text, icon, image layers by name). */
+export function snapshotTemplate(page: Page, rootId: string): { template: NonNullable<ComponentDef['template']>; slots: NonNullable<ComponentDef['slots']> } {
+  const nodes: Record<string, RNode> = {};
+  const slots: NonNullable<ComponentDef['slots']> = {};
+  let k = 0;
+  const copy = (id: string, parent: string | undefined): string => {
+    const n = page.nodes[id]!;
+    const tid = `t${++k}`;
+    const c: RNode = { ...structuredClone(n), id: tid, parent };
+    if (!parent) { delete c.parent; delete c.position; delete c.absolute; }
+    nodes[tid] = c;
+    const kind = n.type === 'text' ? 'text' : n.type === 'vector' && n.icon ? 'icon' : n.type === 'image' ? 'image' : undefined;
+    if (kind && parent) {
+      let name = slotName(n.name);
+      for (let i = 2; slots[name]; i++) name = `${slotName(n.name)}-${i}`;
+      slots[name] = { node: tid, kind };
+    }
+    if (n.children) c.children = n.children.filter((cid) => page.nodes[cid]).map((cid) => copy(cid, tid));
+    return tid;
+  };
+  const root = copy(rootId, undefined);
+  return { template: { root, nodes }, slots };
 }
 
 // ---------------------------------------------------------------- serialize
@@ -991,4 +1155,21 @@ function padStr(p: [Len, Len, Len, Len]): string[] {
 /** Resolved token helper for consumers. */
 export function tokenOf(ref: TokenRef | undefined): string | undefined {
   return ref?.token;
+}
+
+/** A component's user customisations as an editable "component @X" block ('' when there are none). */
+export function componentRdl(doc: RangoliDocument, name: string): string {
+  const def = doc.data.components[name];
+  if (!def) return '';
+  const tokens = new TokenResolver(doc.data.tokens);
+  const lines: string[] = [];
+  for (const r of def.styles.filter((x) => x.user)) {
+    // "col" is the frame default and prints nothing, so a rule without a mode never gains one
+    const scratch: RNode = { id: 'x', type: 'frame', name: 'R', style: r.style, ...(r.layout ? { layout: { ...r.layout, mode: r.layout.mode ?? 'col' } as Layout } : {}), ...(r.size ? { size: r.size } : {}) };
+    const flags = nodeLine(scratch, tokens, doc).replace(/^R#x\s*/, '').trim();
+    const mode = r.layout?.mode === 'col' ? 'col ' : '';
+    const sel = Object.entries(r.when).map(([k, v]) => `${k}=${v}`).join(',') || '*';
+    lines.push(`  ${sel} ${mode}${flags}`);
+  }
+  return lines.length ? `component @${name}\n${lines.join('\n')}` : '';
 }
