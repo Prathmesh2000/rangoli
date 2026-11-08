@@ -59,6 +59,22 @@ export function playMotion(id: string, trigger: 'enter' | 'exit', ms = 600): voi
   }, ms);
 }
 
+/** Play a timeline on the canvas (class .tl-<name> on the stage + unfreeze its targets). */
+export function playTimeline(name: string, targets: string[], ms: number): void {
+  const stage = liveShadow?.querySelector<HTMLElement>('.stage');
+  if (!stage) return;
+  const els = targets.map((id) => liveShadow!.querySelector<HTMLElement>(`[data-rid="${id}"]`)).filter((e): e is HTMLElement => !!e);
+  stage.classList.remove(`tl-${name}`);
+  els.forEach((e) => e.removeAttribute('data-play'));
+  void stage.offsetWidth;
+  stage.classList.add(`tl-${name}`);
+  els.forEach((e) => e.setAttribute('data-play', ''));
+  window.setTimeout(() => {
+    stage.classList.remove(`tl-${name}`);
+    els.forEach((e) => e.removeAttribute('data-play'));
+  }, ms + 100);
+}
+
 export function Canvas() {
   const version = useEditor((s) => s.version);
   const mode = useEditor((s) => s.mode);
@@ -72,7 +88,8 @@ export function Canvas() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
-  const [boxes, setBoxes] = useState<{ sel: Box[]; hover: Box | null; pins: Pin[] }>({ sel: [], hover: null, pins: [] });
+  const [boxes, setBoxes] = useState<{ sel: Box[]; hover: Box | null; pins: Pin[]; start: Box | null }>({ sel: [], hover: null, pins: [], start: null });
+  const startId = useEditor((s) => s.doc?.data.prototype?.start ?? null);
 
   // render design into shadow DOM
   useLayoutEffect(() => {
@@ -123,9 +140,10 @@ export function Canvas() {
       sel: selection.map(boxOf).filter((b): b is Box => !!b),
       hover: hover && !selection.includes(hover) ? boxOf(hover) : null,
       pins,
+      start: startId ? boxOf(startId) : null,
     });
   };
-  useLayoutEffect(measure, [version, selection, hover, zoom, mode, threads]);
+  useLayoutEffect(measure, [version, selection, hover, zoom, mode, threads, startId]);
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
@@ -206,6 +224,9 @@ export function Canvas() {
           <span className="ov-label">{b.label}</span>
         </div>
       ))}
+      {boxes.start && (
+        <span className="start-badge" style={{ left: boxes.start.x + boxes.start.w, top: boxes.start.y - 24 }} title="Prototype starts on this screen">▶ Start</span>
+      )}
       {boxes.pins.map((p) => (
         <button key={p.node} className={`pin${p.severity ? ` pin-${p.severity}` : ''}`} style={{ left: p.x - 10, top: p.y - 10 }}
           aria-label={`${p.count} open ${p.severity ? 'review finding' : 'comment'}${p.count > 1 ? 's' : ''} on #${p.node}`}

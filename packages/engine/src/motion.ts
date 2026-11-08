@@ -298,13 +298,37 @@ const PSEUDO: Record<string, string> = {
 
 const keyframeName = (key: string, trig: string) => `rg-${key.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '')}-${trig}`;
 
-/** Generate CSS for all motion definitions. */
-export function motionCss(motion: Record<string, MotionDef> | undefined, tokenTree: TokenTree): string {
-  if (!motion) return '';
+/** Keyframes for one spec as WAAPI-ready objects (used by prototypes and filmstrips). */
+export function specKeyframes(spec: MotionSpec, tokenTree: TokenTree, reduced = false): { from: Record<string, string>; to: Record<string, string>; ms: number; easing: string } {
+  const tokens = new TokenResolver(tokenTree);
+  const toObj = (decls: string[]) =>
+    Object.fromEntries(
+      decls.map((d) => {
+        const i = d.indexOf(':');
+        return [d.slice(0, i).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()), d.slice(i + 1)];
+      }),
+    );
+  const tm = resolveTiming(spec, tokens);
+  return { from: toObj(declsFor(spec.tracks, 'from', tokens, reduced)), to: toObj(declsFor(spec.tracks, 'to', tokens, reduced)), ms: tm.ms, easing: tm.ease };
+}
+
+/** Generate CSS for all motion definitions (+ timelines, triggered by class .tl-<name> on any ancestor). */
+export function motionCss(motion: Record<string, MotionDef> | undefined, tokenTree: TokenTree, timelines?: Record<string, { name: string; tracks: { target: string; at: number; spec: MotionSpec }[] }>): string {
+  if (!motion && !timelines) return '';
   const tokens = new TokenResolver(tokenTree);
   const out: string[] = [];
   const reduced: string[] = [];
-  for (const def of Object.values(motion)) {
+  for (const tl of Object.values(timelines ?? {})) {
+    tl.tracks.forEach((t, i) => {
+      const tm = resolveTiming(t.spec, tokens);
+      const name = `rg-tl-${tl.name}-${i}`;
+      out.push(`@keyframes ${name}{from{${declsFor(t.spec.tracks, 'from', tokens).join(';')}}to{${declsFor(t.spec.tracks, 'to', tokens).join(';')}}}`);
+      out.push(`.tl-${tl.name} .r-${t.target},.r-${t.target}.tl-${tl.name}{animation:${name} ${tm.css} ${tm.ease} ${t.at}ms both}`);
+      const rf = declsFor(t.spec.tracks, 'from', tokens, true), rt = declsFor(t.spec.tracks, 'to', tokens, true);
+      reduced.push(rf.length || rt.length ? `@keyframes ${name}-r{from{${rf.join(';')}}to{${rt.join(';')}}}.tl-${tl.name} .r-${t.target},.r-${t.target}.tl-${tl.name}{animation-name:${name}-r;animation-duration:${Math.min(tm.ms, 150)}ms}` : `.tl-${tl.name} .r-${t.target}{animation:none}`);
+    });
+  }
+  for (const def of Object.values(motion ?? {})) {
     const S = targetSelector(def.target);
     const states = def.specs.filter((s) => STATE_TRIGGERS.has(s.trigger));
     // base transition list: how we animate back OUT of states (use each prop's first spec timing)

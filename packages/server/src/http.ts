@@ -4,7 +4,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRdl, defaultTokens, formatLint, lint, renderDocument, serializeRdl, type ChangeEntry, type Severity } from '@rangoli/engine';
+import { randomUUID } from 'node:crypto';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { applyRdl, defaultTokens, formatLint, lint, prototypeHtml, renderDocument, serializeRdl, type ChangeEntry, type Severity } from '@rangoli/engine';
+import { writeLock } from './lock.js';
+import { createMcpServer } from './mcp.js';
 import { PREVIEW_CLIENT } from './preview-client.js';
 import type { AgentMode, Role, Session } from './session.js';
 
@@ -82,6 +87,36 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
       req.on('error', rej);
     });
 
+  // ---------------- MCP over HTTP (agents attach to THIS process; no second writer) ----------------
+  let baseUrl = '';
+  const mcpSessions = new Map<string, StreamableHTTPServerTransport>();
+  const handleMcp = async (req: IncomingMessage, res: ServerResponse, body: unknown) => {
+    const sid = req.headers['mcp-session-id'];
+    let transport = typeof sid === 'string' ? mcpSessions.get(sid) : undefined;
+    if (!transport) {
+      if (req.method !== 'POST' || !isInitializeRequest(body)) {
+        res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'No valid MCP session' }, id: null }));
+        return;
+      }
+      const t: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          mcpSessions.set(id, t);
+          session.touchPresence({ clientId: `agent:${id}`, name: 'Agent', role: 'agent', selection: [] });
+        },
+      });
+      t.onclose = () => {
+        if (t.sessionId) {
+          mcpSessions.delete(t.sessionId);
+          session.dropPresence(`agent:${t.sessionId}`);
+        }
+      };
+      await createMcpServer(session, { previewUrl: baseUrl, author: 'agent' }).connect(t);
+      transport = t;
+    }
+    await transport.handleRequest(req as IncomingMessage & { auth?: undefined }, res, body);
+  };
+
   const server = createServer(async (req, res) => {
     const json = (status: number, body: unknown) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -110,6 +145,14 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
       const can = (min: Role) => RANK[role!] >= RANK[min];
       const name = cleanName(req.headers['x-rangoli-name']) || (role === 'owner' ? '' : role);
       const author = name ? `human:${name}` : 'human';
+
+      // ---------------- MCP endpoint: owner machine only ----------------
+      if (url.pathname === '/mcp') {
+        if (role !== 'owner') return deny(403, 'MCP is only available on the machine that runs Rangoli');
+        if (req.headers.origin && !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(req.headers.origin)) return deny(403, 'Cross-origin MCP rejected');
+        const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || 'null') : undefined;
+        return void (await handleMcp(req, res, body));
+      }
 
       // ---------------- CSRF: writes must be same-origin JSON ----------------
       if (req.method !== 'GET') {
@@ -271,6 +314,11 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return void res.end(page.replace('</body>', `${PREVIEW_CLIENT}\n</body>`));
       }
+      if (req.method === 'GET' && (url.pathname === '/play' || url.pathname === '/play/')) {
+        const html = prototypeHtml(session.doc, { start: url.searchParams.get('start') ?? undefined, mode: url.searchParams.get('mode') ?? undefined, liveReload: true });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return void res.end(html);
+      }
       if (req.method === 'GET' && url.pathname === '/rdl') {
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
         return void res.end(serializeRdl(session.doc));
@@ -295,6 +343,8 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
     };
     tryListen(opts.port ?? 4400, 20);
   });
+  baseUrl = `http://127.0.0.1:${actualPort}/`;
+  const releaseLock = writeLock(session.dir, baseUrl);
 
   return {
     url: `http://127.0.0.1:${actualPort}/`,
@@ -308,6 +358,8 @@ export async function startPreview(session: Session, portOrOpts: number | Previe
         session.off('reviews', onReviews);
         session.off('presence', onPresence);
         session.off('mode', onMode);
+        releaseLock();
+        for (const t of mcpSessions.values()) void t.close();
         for (const c of clients) c.end();
         server.close(() => r());
       }),

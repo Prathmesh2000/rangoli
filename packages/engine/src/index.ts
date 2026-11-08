@@ -9,4 +9,6 @@ export * from './render.js';
 export * from './lint.js';
 export * from './motion.js';
 export * from './review.js';
+export * from './prototype.js';
+export * from './player.js';
 // Node-only file I/O lives at '@rangoli/engine/io' so the engine bundles cleanly for the browser.

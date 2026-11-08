@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MOTION_PRESETS, resolveTiming, sampleMotion, serializeMotion, TokenResolver, type MotionSpec, type RNode } from '@rangoli/engine';
-import { playMotion } from './Canvas';
+import { MOTION_PRESETS, resolveTiming, sampleMotion, serializeMotion, timelineDuration, TokenResolver, type MotionSpec, type RNode } from '@rangoli/engine';
+import { playMotion, playTimeline } from './Canvas';
 import { indent } from './helpers';
 import { getState, rdl, useEditor } from './store';
 
@@ -66,6 +66,8 @@ export function MotionTab({ node }: { node: RNode }) {
         {def && <Curves specs={def.specs} />}
       </section>
 
+      <Timelines node={node} />
+
       {inherited.length > 0 && (
         <section className="section">
           <h3 className="section-title">From component</h3>
@@ -79,6 +81,34 @@ export function MotionTab({ node }: { node: RNode }) {
         </section>
       )}
     </div>
+  );
+}
+
+/** Timelines that animate this layer (or any, when a screen is selected), with play. */
+function Timelines({ node }: { node: RNode }) {
+  const doc = getState().doc!;
+  const all = Object.values(doc.data.timelines ?? {});
+  const inScreen = (id: string) => {
+    let n = doc.findNode(id)?.node;
+    while (n?.parent) n = doc.findNode(n.parent)?.node;
+    return n?.id === node.id;
+  };
+  const relevant = all.filter((t) => t.tracks.some((tr) => tr.target === node.id || (!node.parent && inScreen(tr.target))));
+  if (!relevant.length) return null;
+  return (
+    <section className="section">
+      <h3 className="section-title">Timelines</h3>
+      {relevant.map((t) => {
+        const ms = timelineDuration(t, doc.data.tokens);
+        return (
+          <div key={t.name} className="version">
+            <span className="version-name">{t.name}</span>
+            <span className="hint">{t.tracks.length} steps · {ms}ms</span>
+            <button className="btn btn-sm-inline" onClick={() => playTimeline(t.name, t.tracks.map((x) => x.target), ms)}>▶ Play</button>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 

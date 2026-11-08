@@ -2,11 +2,466 @@
   "id": "p1",
   "name": "Page 1",
   "children": [
-    "n1"
+    "n1",
+    "np",
+    "n1v"
   ],
   "nodes": {
     "n1": {
       "id": "n1",
+      "type": "frame",
+      "name": "Login",
+      "layout": {
+        "mode": "col",
+        "align": "center",
+        "justify": "center"
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 1280
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 800
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.canvas"
+          }
+        ]
+      },
+      "children": [
+        "n2"
+      ]
+    },
+    "n2": {
+      "id": "n2",
+      "type": "frame",
+      "name": "Panel",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.6"
+        }
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 400
+        }
+      },
+      "parent": "n1",
+      "children": [
+        "n3",
+        "n6",
+        "n9",
+        "no"
+      ]
+    },
+    "n3": {
+      "id": "n3",
+      "type": "frame",
+      "name": "Brand",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.2"
+        },
+        "align": "center"
+      },
+      "parent": "n2",
+      "children": [
+        "n4",
+        "n5"
+      ]
+    },
+    "n4": {
+      "id": "n4",
+      "type": "frame",
+      "name": "Mark",
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 20
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 20
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.primary.600"
+          }
+        ],
+        "radius": {
+          "token": "radius.2"
+        }
+      },
+      "layout": {
+        "mode": "col"
+      },
+      "parent": "n3",
+      "children": []
+    },
+    "n5": {
+      "id": "n5",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.title-sm"
+        }
+      },
+      "text": "AI Test Management",
+      "parent": "n3"
+    },
+    "n6": {
+      "id": "n6",
+      "type": "frame",
+      "name": "Intro",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.1"
+        }
+      },
+      "parent": "n2",
+      "children": [
+        "n7",
+        "n8"
+      ]
+    },
+    "n7": {
+      "id": "n7",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.headline"
+        }
+      },
+      "text": "Sign in",
+      "parent": "n6"
+    },
+    "n8": {
+      "id": "n8",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "text": "Use your work email to open your suites and test runs.",
+      "parent": "n6"
+    },
+    "n9": {
+      "id": "n9",
+      "type": "frame",
+      "name": "Form",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.5"
+        },
+        "padding": [
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          }
+        ]
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.surface"
+          }
+        ],
+        "stroke": {
+          "paint": {
+            "token": "color.border.default"
+          },
+          "width": 1,
+          "align": "inside"
+        },
+        "radius": {
+          "token": "radius.4"
+        }
+      },
+      "parent": "n2",
+      "children": [
+        "na",
+        "nd",
+        "ni",
+        "nj",
+        "nn"
+      ]
+    },
+    "na": {
+      "id": "na",
+      "type": "frame",
+      "name": "EmailField",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.1.5"
+        }
+      },
+      "parent": "n9",
+      "children": [
+        "nb",
+        "nc"
+      ]
+    },
+    "nb": {
+      "id": "nb",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        }
+      },
+      "text": "Work email",
+      "parent": "na"
+    },
+    "nc": {
+      "id": "nc",
+      "type": "instance",
+      "name": "Input",
+      "component": "Input",
+      "props": {
+        "placeholder": "name@company.com"
+      },
+      "parent": "na",
+      "children": []
+    },
+    "nd": {
+      "id": "nd",
+      "type": "frame",
+      "name": "PasswordField",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.1.5"
+        }
+      },
+      "parent": "n9",
+      "children": [
+        "ne",
+        "nh"
+      ]
+    },
+    "ne": {
+      "id": "ne",
+      "type": "frame",
+      "name": "LabelRow",
+      "layout": {
+        "mode": "row",
+        "justify": "between",
+        "align": "center"
+      },
+      "parent": "nd",
+      "children": [
+        "nf",
+        "ng"
+      ]
+    },
+    "nf": {
+      "id": "nf",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        }
+      },
+      "text": "Password",
+      "parent": "ne"
+    },
+    "ng": {
+      "id": "ng",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        },
+        "color": {
+          "token": "color.text.link"
+        }
+      },
+      "text": "Forgot password?",
+      "parent": "ne"
+    },
+    "nh": {
+      "id": "nh",
+      "type": "instance",
+      "name": "Input",
+      "component": "Input",
+      "props": {
+        "placeholder": "Enter your password"
+      },
+      "parent": "nd",
+      "children": []
+    },
+    "ni": {
+      "id": "ni",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "primary"
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "props": {
+        "label": "Sign in"
+      },
+      "parent": "n9",
+      "children": []
+    },
+    "nj": {
+      "id": "nj",
+      "type": "frame",
+      "name": "Divider",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.3"
+        },
+        "align": "center"
+      },
+      "parent": "n9",
+      "children": [
+        "nk",
+        "nl",
+        "nm"
+      ]
+    },
+    "nk": {
+      "id": "nk",
+      "type": "frame",
+      "name": "Line",
+      "size": {
+        "w": {
+          "kind": "fill"
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 1
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.border.default"
+          }
+        ]
+      },
+      "layout": {
+        "mode": "col"
+      },
+      "parent": "nj",
+      "children": []
+    },
+    "nl": {
+      "id": "nl",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.caption"
+        },
+        "color": {
+          "token": "color.text.muted"
+        }
+      },
+      "text": "or",
+      "parent": "nj"
+    },
+    "nm": {
+      "id": "nm",
+      "type": "frame",
+      "name": "Line",
+      "size": {
+        "w": {
+          "kind": "fill"
+        },
+        "h": {
+          "kind": "fixed",
+          "v": 1
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.border.default"
+          }
+        ]
+      },
+      "layout": {
+        "mode": "col"
+      },
+      "parent": "nj",
+      "children": []
+    },
+    "nn": {
+      "id": "nn",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "secondary"
+      },
+      "size": {
+        "w": {
+          "kind": "fill"
+        }
+      },
+      "props": {
+        "label": "Continue with SSO"
+      },
+      "parent": "n9",
+      "children": []
+    },
+    "no": {
+      "id": "no",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.body-sm"
+        },
+        "color": {
+          "token": "color.text.muted"
+        },
+        "textAlign": "center"
+      },
+      "text": "New here? Ask your workspace admin for an invite.",
+      "parent": "n2"
+    },
+    "np": {
+      "id": "np",
       "type": "frame",
       "name": "Runs",
       "layout": {
@@ -43,13 +498,13 @@
         ]
       },
       "children": [
-        "n2",
-        "n9",
-        "nd"
+        "nq",
+        "nx",
+        "n11"
       ]
     },
-    "n2": {
-      "id": "n2",
+    "nq": {
+      "id": "nq",
       "type": "frame",
       "name": "Header",
       "layout": {
@@ -57,14 +512,14 @@
         "justify": "between",
         "align": "center"
       },
-      "parent": "n1",
+      "parent": "np",
       "children": [
-        "n3",
-        "n6"
+        "nr",
+        "nu"
       ]
     },
-    "n3": {
-      "id": "n3",
+    "nr": {
+      "id": "nr",
       "type": "frame",
       "name": "Heading",
       "layout": {
@@ -73,14 +528,14 @@
           "token": "space.1"
         }
       },
-      "parent": "n2",
+      "parent": "nq",
       "children": [
-        "n4",
-        "n5"
+        "ns",
+        "nt"
       ]
     },
-    "n4": {
-      "id": "n4",
+    "ns": {
+      "id": "ns",
       "type": "text",
       "name": "Text",
       "style": {
@@ -89,10 +544,10 @@
         }
       },
       "text": "Test runs",
-      "parent": "n3"
+      "parent": "nr"
     },
-    "n5": {
-      "id": "n5",
+    "nt": {
+      "id": "nt",
       "type": "text",
       "name": "Text",
       "style": {
@@ -104,10 +559,10 @@
         }
       },
       "text": "Nightly and on-demand runs across all suites",
-      "parent": "n3"
+      "parent": "nr"
     },
-    "n6": {
-      "id": "n6",
+    "nu": {
+      "id": "nu",
       "type": "frame",
       "name": "Actions",
       "layout": {
@@ -117,14 +572,14 @@
         },
         "align": "center"
       },
-      "parent": "n2",
+      "parent": "nq",
       "children": [
-        "n7",
-        "n8"
+        "nv",
+        "nw"
       ]
     },
-    "n7": {
-      "id": "n7",
+    "nv": {
+      "id": "nv",
       "type": "instance",
       "name": "Button",
       "component": "Button",
@@ -135,11 +590,11 @@
       "props": {
         "label": "Export"
       },
-      "parent": "n6",
+      "parent": "nu",
       "children": []
     },
-    "n8": {
-      "id": "n8",
+    "nw": {
+      "id": "nw",
       "type": "instance",
       "name": "Button",
       "component": "Button",
@@ -150,11 +605,11 @@
       "props": {
         "label": "New run"
       },
-      "parent": "n6",
+      "parent": "nu",
       "children": []
     },
-    "n9": {
-      "id": "n9",
+    "nx": {
+      "id": "nx",
       "type": "frame",
       "name": "Filters",
       "layout": {
@@ -164,15 +619,15 @@
         },
         "align": "center"
       },
-      "parent": "n1",
+      "parent": "np",
       "children": [
-        "na",
-        "nb",
-        "nc"
+        "ny",
+        "nz",
+        "n10"
       ]
     },
-    "na": {
-      "id": "na",
+    "ny": {
+      "id": "ny",
       "type": "instance",
       "name": "Input",
       "component": "Input",
@@ -182,11 +637,11 @@
       "props": {
         "placeholder": "Search runs"
       },
-      "parent": "n9",
+      "parent": "nx",
       "children": []
     },
-    "nb": {
-      "id": "nb",
+    "nz": {
+      "id": "nz",
       "type": "instance",
       "name": "Chip",
       "component": "Chip",
@@ -196,11 +651,11 @@
       "props": {
         "label": "All suites"
       },
-      "parent": "n9",
+      "parent": "nx",
       "children": []
     },
-    "nc": {
-      "id": "nc",
+    "n10": {
+      "id": "n10",
       "type": "instance",
       "name": "Chip",
       "component": "Chip",
@@ -210,11 +665,11 @@
       "props": {
         "label": "Last 7 days"
       },
-      "parent": "n9",
+      "parent": "nx",
       "children": []
     },
-    "nd": {
-      "id": "nd",
+    "n11": {
+      "id": "n11",
       "type": "frame",
       "name": "Table",
       "layout": {
@@ -238,16 +693,16 @@
         },
         "clip": true
       },
-      "parent": "n1",
+      "parent": "np",
       "children": [
-        "ne",
-        "nj",
-        "nr",
-        "nz"
+        "n12",
+        "n17",
+        "n1f",
+        "n1n"
       ]
     },
-    "ne": {
-      "id": "ne",
+    "n12": {
+      "id": "n12",
       "type": "frame",
       "name": "HeaderRow",
       "layout": {
@@ -277,16 +732,16 @@
           }
         ]
       },
-      "parent": "nd",
+      "parent": "n11",
       "children": [
-        "nf",
-        "ng",
-        "nh",
-        "ni"
+        "n13",
+        "n14",
+        "n15",
+        "n16"
       ]
     },
-    "nf": {
-      "id": "nf",
+    "n13": {
+      "id": "n13",
       "type": "text",
       "name": "Text",
       "style": {
@@ -303,10 +758,10 @@
         }
       },
       "text": "Run",
-      "parent": "ne"
+      "parent": "n12"
     },
-    "ng": {
-      "id": "ng",
+    "n14": {
+      "id": "n14",
       "type": "text",
       "name": "Text",
       "style": {
@@ -324,10 +779,10 @@
         }
       },
       "text": "Status",
-      "parent": "ne"
+      "parent": "n12"
     },
-    "nh": {
-      "id": "nh",
+    "n15": {
+      "id": "n15",
       "type": "text",
       "name": "Text",
       "style": {
@@ -345,10 +800,10 @@
         }
       },
       "text": "Duration",
-      "parent": "ne"
+      "parent": "n12"
     },
-    "ni": {
-      "id": "ni",
+    "n16": {
+      "id": "n16",
       "type": "text",
       "name": "Text",
       "style": {
@@ -366,10 +821,10 @@
         }
       },
       "text": "Started",
-      "parent": "ne"
+      "parent": "n12"
     },
-    "nj": {
-      "id": "nj",
+    "n17": {
+      "id": "n17",
       "type": "frame",
       "name": "Row1",
       "layout": {
@@ -393,16 +848,16 @@
         },
         "align": "center"
       },
-      "parent": "nd",
+      "parent": "n11",
       "children": [
-        "nk",
-        "nn",
-        "np",
-        "nq"
+        "n18",
+        "n1b",
+        "n1d",
+        "n1e"
       ]
     },
-    "nk": {
-      "id": "nk",
+    "n18": {
+      "id": "n18",
       "type": "frame",
       "name": "Cell",
       "layout": {
@@ -416,14 +871,14 @@
           "kind": "fill"
         }
       },
-      "parent": "nj",
+      "parent": "n17",
       "children": [
-        "nl",
-        "nm"
+        "n19",
+        "n1a"
       ]
     },
-    "nl": {
-      "id": "nl",
+    "n19": {
+      "id": "n19",
       "type": "text",
       "name": "Text",
       "style": {
@@ -432,10 +887,10 @@
         }
       },
       "text": "Checkout flow",
-      "parent": "nk"
+      "parent": "n18"
     },
-    "nm": {
-      "id": "nm",
+    "n1a": {
+      "id": "n1a",
       "type": "text",
       "name": "Text",
       "style": {
@@ -448,10 +903,10 @@
         "mono": true
       },
       "text": "RUN-2481 · 142 tests",
-      "parent": "nk"
+      "parent": "n18"
     },
-    "nn": {
-      "id": "nn",
+    "n1b": {
+      "id": "n1b",
       "type": "frame",
       "name": "Status1",
       "layout": {
@@ -463,13 +918,13 @@
           "v": 120
         }
       },
-      "parent": "nj",
+      "parent": "n17",
       "children": [
-        "no"
+        "n1c"
       ]
     },
-    "no": {
-      "id": "no",
+    "n1c": {
+      "id": "n1c",
       "type": "instance",
       "name": "Chip",
       "component": "Chip",
@@ -479,11 +934,11 @@
       "props": {
         "label": "Passed"
       },
-      "parent": "nn",
+      "parent": "n1b",
       "children": []
     },
-    "np": {
-      "id": "np",
+    "n1d": {
+      "id": "n1d",
       "type": "text",
       "name": "Text",
       "style": {
@@ -499,10 +954,10 @@
         }
       },
       "text": "04:12",
-      "parent": "nj"
+      "parent": "n17"
     },
-    "nq": {
-      "id": "nq",
+    "n1e": {
+      "id": "n1e",
       "type": "text",
       "name": "Text",
       "style": {
@@ -520,10 +975,10 @@
         }
       },
       "text": "2 hours ago",
-      "parent": "nj"
+      "parent": "n17"
     },
-    "nr": {
-      "id": "nr",
+    "n1f": {
+      "id": "n1f",
       "type": "frame",
       "name": "Row2",
       "layout": {
@@ -547,16 +1002,16 @@
         },
         "align": "center"
       },
-      "parent": "nd",
+      "parent": "n11",
       "children": [
-        "ns",
-        "nv",
-        "nx",
-        "ny"
+        "n1g",
+        "n1j",
+        "n1l",
+        "n1m"
       ]
     },
-    "ns": {
-      "id": "ns",
+    "n1g": {
+      "id": "n1g",
       "type": "frame",
       "name": "Cell",
       "layout": {
@@ -570,14 +1025,14 @@
           "kind": "fill"
         }
       },
-      "parent": "nr",
+      "parent": "n1f",
       "children": [
-        "nt",
-        "nu"
+        "n1h",
+        "n1i"
       ]
     },
-    "nt": {
-      "id": "nt",
+    "n1h": {
+      "id": "n1h",
       "type": "text",
       "name": "Text",
       "style": {
@@ -586,10 +1041,10 @@
         }
       },
       "text": "Login smoke test",
-      "parent": "ns"
+      "parent": "n1g"
     },
-    "nu": {
-      "id": "nu",
+    "n1i": {
+      "id": "n1i",
       "type": "text",
       "name": "Text",
       "style": {
@@ -602,10 +1057,10 @@
         "mono": true
       },
       "text": "RUN-2480 · 24 tests",
-      "parent": "ns"
+      "parent": "n1g"
     },
-    "nv": {
-      "id": "nv",
+    "n1j": {
+      "id": "n1j",
       "type": "frame",
       "name": "Status2",
       "layout": {
@@ -617,13 +1072,13 @@
           "v": 120
         }
       },
-      "parent": "nr",
+      "parent": "n1f",
       "children": [
-        "nw"
+        "n1k"
       ]
     },
-    "nw": {
-      "id": "nw",
+    "n1k": {
+      "id": "n1k",
       "type": "instance",
       "name": "Chip",
       "component": "Chip",
@@ -633,11 +1088,11 @@
       "props": {
         "label": "3 failed"
       },
-      "parent": "nv",
+      "parent": "n1j",
       "children": []
     },
-    "nx": {
-      "id": "nx",
+    "n1l": {
+      "id": "n1l",
       "type": "text",
       "name": "Text",
       "style": {
@@ -653,10 +1108,10 @@
         }
       },
       "text": "00:58",
-      "parent": "nr"
+      "parent": "n1f"
     },
-    "ny": {
-      "id": "ny",
+    "n1m": {
+      "id": "n1m",
       "type": "text",
       "name": "Text",
       "style": {
@@ -674,10 +1129,10 @@
         }
       },
       "text": "3 hours ago",
-      "parent": "nr"
+      "parent": "n1f"
     },
-    "nz": {
-      "id": "nz",
+    "n1n": {
+      "id": "n1n",
       "type": "frame",
       "name": "Row3",
       "layout": {
@@ -701,16 +1156,16 @@
         },
         "align": "center"
       },
-      "parent": "nd",
+      "parent": "n11",
       "children": [
-        "n10",
-        "n13",
-        "n15",
-        "n16"
+        "n1o",
+        "n1r",
+        "n1t",
+        "n1u"
       ]
     },
-    "n10": {
-      "id": "n10",
+    "n1o": {
+      "id": "n1o",
       "type": "frame",
       "name": "Cell",
       "layout": {
@@ -724,14 +1179,14 @@
           "kind": "fill"
         }
       },
-      "parent": "nz",
+      "parent": "n1n",
       "children": [
-        "n11",
-        "n12"
+        "n1p",
+        "n1q"
       ]
     },
-    "n11": {
-      "id": "n11",
+    "n1p": {
+      "id": "n1p",
       "type": "text",
       "name": "Text",
       "style": {
@@ -740,10 +1195,10 @@
         }
       },
       "text": "Payments regression",
-      "parent": "n10"
+      "parent": "n1o"
     },
-    "n12": {
-      "id": "n12",
+    "n1q": {
+      "id": "n1q",
       "type": "text",
       "name": "Text",
       "style": {
@@ -756,10 +1211,10 @@
         "mono": true
       },
       "text": "RUN-2479 · 318 tests",
-      "parent": "n10"
+      "parent": "n1o"
     },
-    "n13": {
-      "id": "n13",
+    "n1r": {
+      "id": "n1r",
       "type": "frame",
       "name": "Status3",
       "layout": {
@@ -771,13 +1226,13 @@
           "v": 120
         }
       },
-      "parent": "nz",
+      "parent": "n1n",
       "children": [
-        "n14"
+        "n1s"
       ]
     },
-    "n14": {
-      "id": "n14",
+    "n1s": {
+      "id": "n1s",
       "type": "instance",
       "name": "Chip",
       "component": "Chip",
@@ -787,11 +1242,11 @@
       "props": {
         "label": "Flaky"
       },
-      "parent": "n13",
+      "parent": "n1r",
       "children": []
     },
-    "n15": {
-      "id": "n15",
+    "n1t": {
+      "id": "n1t",
       "type": "text",
       "name": "Text",
       "style": {
@@ -807,10 +1262,10 @@
         }
       },
       "text": "11:40",
-      "parent": "nz"
+      "parent": "n1n"
     },
-    "n16": {
-      "id": "n16",
+    "n1u": {
+      "id": "n1u",
       "type": "text",
       "name": "Text",
       "style": {
@@ -828,7 +1283,153 @@
         }
       },
       "text": "Yesterday",
-      "parent": "nz"
+      "parent": "n1n"
+    },
+    "n1v": {
+      "id": "n1v",
+      "type": "frame",
+      "name": "New run dialog",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.5"
+        },
+        "padding": [
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          },
+          {
+            "token": "space.6"
+          }
+        ]
+      },
+      "size": {
+        "w": {
+          "kind": "fixed",
+          "v": 400
+        }
+      },
+      "style": {
+        "fill": [
+          {
+            "token": "color.bg.surface"
+          }
+        ],
+        "radius": {
+          "token": "radius.4"
+        },
+        "shadow": {
+          "token": "shadow.lg"
+        }
+      },
+      "children": [
+        "n1w",
+        "n1x",
+        "n20"
+      ]
+    },
+    "n1w": {
+      "id": "n1w",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.title"
+        }
+      },
+      "text": "Start a new run",
+      "parent": "n1v"
+    },
+    "n1x": {
+      "id": "n1x",
+      "type": "frame",
+      "name": "Field",
+      "layout": {
+        "mode": "col",
+        "gap": {
+          "token": "space.1.5"
+        }
+      },
+      "parent": "n1v",
+      "children": [
+        "n1y",
+        "n1z"
+      ]
+    },
+    "n1y": {
+      "id": "n1y",
+      "type": "text",
+      "name": "Text",
+      "style": {
+        "textStyle": {
+          "token": "textStyle.label"
+        }
+      },
+      "text": "Suite",
+      "parent": "n1x"
+    },
+    "n1z": {
+      "id": "n1z",
+      "type": "instance",
+      "name": "Input",
+      "component": "Input",
+      "props": {
+        "placeholder": "Checkout regression"
+      },
+      "parent": "n1x",
+      "children": []
+    },
+    "n20": {
+      "id": "n20",
+      "type": "frame",
+      "name": "Footer",
+      "layout": {
+        "mode": "row",
+        "gap": {
+          "token": "space.2"
+        },
+        "justify": "end",
+        "align": "center"
+      },
+      "parent": "n1v",
+      "children": [
+        "n21",
+        "n22"
+      ]
+    },
+    "n21": {
+      "id": "n21",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "ghost"
+      },
+      "props": {
+        "label": "Cancel"
+      },
+      "parent": "n20",
+      "children": []
+    },
+    "n22": {
+      "id": "n22",
+      "type": "instance",
+      "name": "Button",
+      "component": "Button",
+      "variant": {
+        "variant": "primary"
+      },
+      "props": {
+        "label": "Start run"
+      },
+      "parent": "n20",
+      "children": []
     }
   }
 }

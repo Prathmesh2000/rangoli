@@ -1,0 +1,140 @@
+{
+  "interactions": {
+    "ni": [
+      {
+        "trigger": "click",
+        "action": "navigate",
+        "transition": {
+          "type": "dissolve",
+          "duration": "base",
+          "easing": "out"
+        },
+        "target": "np"
+      }
+    ],
+    "nw": [
+      {
+        "trigger": "click",
+        "action": "overlay",
+        "transition": {
+          "type": "dissolve",
+          "duration": "fast",
+          "easing": "out"
+        },
+        "target": "n1v"
+      }
+    ],
+    "n21": [
+      {
+        "trigger": "click",
+        "action": "close",
+        "transition": {
+          "type": "dissolve",
+          "duration": "base",
+          "easing": "out"
+        }
+      }
+    ],
+    "n1v": [
+      {
+        "trigger": "key",
+        "action": "close",
+        "transition": {
+          "type": "dissolve",
+          "duration": "base",
+          "easing": "out"
+        },
+        "key": "Escape"
+      }
+    ],
+    "n22": [
+      {
+        "trigger": "click",
+        "action": "close",
+        "transition": {
+          "type": "dissolve",
+          "duration": "base",
+          "easing": "out"
+        }
+      }
+    ],
+    "np": [
+      {
+        "trigger": "delay",
+        "action": "play",
+        "transition": {
+          "type": "dissolve",
+          "duration": "base",
+          "easing": "out"
+        },
+        "delay": 0,
+        "timeline": "rows"
+      }
+    ]
+  },
+  "start": "n1",
+  "timelines": {
+    "rows": {
+      "name": "rows",
+      "tracks": [
+        {
+          "target": "n17",
+          "at": 0,
+          "spec": {
+            "trigger": "enter",
+            "tracks": [
+              {
+                "prop": "opacity",
+                "from": "0"
+              },
+              {
+                "prop": "y",
+                "from": "sm"
+              }
+            ],
+            "duration": "base",
+            "easing": "out"
+          }
+        },
+        {
+          "target": "n1f",
+          "at": 60,
+          "spec": {
+            "trigger": "enter",
+            "tracks": [
+              {
+                "prop": "opacity",
+                "from": "0"
+              },
+              {
+                "prop": "y",
+                "from": "sm"
+              }
+            ],
+            "duration": "base",
+            "easing": "out"
+          }
+        },
+        {
+          "target": "n1n",
+          "at": 120,
+          "spec": {
+            "trigger": "enter",
+            "tracks": [
+              {
+                "prop": "opacity",
+                "from": "0"
+              },
+              {
+                "prop": "y",
+                "from": "sm"
+              }
+            ],
+            "duration": "base",
+            "easing": "out"
+          }
+        }
+      ]
+    }
+  }
+}

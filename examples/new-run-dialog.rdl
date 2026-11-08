@@ -1,0 +1,8 @@
+NewRun col gap5 p6 w400 fill:surface r4 shadow:lg name:"New run dialog"
+  Text title "Start a new run"
+  Field col gap1.5
+    Text label "Suite"
+    @Input "Checkout regression"
+  Footer row gap2 jend center
+    @Button variant=ghost "Cancel"
+    @Button variant=primary "Start run"

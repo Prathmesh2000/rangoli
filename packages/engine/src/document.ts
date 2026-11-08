@@ -1,6 +1,7 @@
 import { IdGen } from './ids.js';
 import type { ComponentDef, DocumentData, Page, RNode, TokenTree } from './model.js';
 import type { MotionDef } from './motion.js';
+import type { Interaction, Timeline } from './prototype.js';
 
 /** Atomic edit operations. Every op is reversible. */
 export type Op =
@@ -13,6 +14,9 @@ export type Op =
   | { op: 'deleteComponent'; id: string }
   /** set (def) or remove (null) a motion definition */
   | { op: 'setMotion'; target: string; def: MotionDef | null }
+  | { op: 'setInteractions'; node: string; list: Interaction[] | null }
+  | { op: 'setProtoStart'; frame: string | null }
+  | { op: 'setTimeline'; name: string; def: Timeline | null }
   /** internal: restore a deleted subtree exactly */
   | { op: 'restore'; page: string; nodes: RNode[]; parent?: string; index: number };
 
@@ -327,6 +331,30 @@ export class RangoliDocument {
         else delete motion[op.target];
         touched.add(`$motion:${op.target}`);
         return [{ op: 'setMotion', target: op.target, def: prev ? clone(prev) : null }];
+      }
+      case 'setInteractions': {
+        const p = (this.data.prototype ??= { interactions: {} });
+        const prev = p.interactions[op.node];
+        if (op.list && op.list.length) p.interactions[op.node] = clone(op.list);
+        else delete p.interactions[op.node];
+        touched.add(`$proto:${op.node}`);
+        return [{ op: 'setInteractions', node: op.node, list: prev ? clone(prev) : null }];
+      }
+      case 'setProtoStart': {
+        const p = (this.data.prototype ??= { interactions: {} });
+        const prev = p.start ?? null;
+        if (op.frame) p.start = op.frame;
+        else delete p.start;
+        touched.add('$proto:start');
+        return [{ op: 'setProtoStart', frame: prev }];
+      }
+      case 'setTimeline': {
+        const tl = (this.data.timelines ??= {});
+        const prev = tl[op.name];
+        if (op.def) tl[op.name] = clone(op.def);
+        else delete tl[op.name];
+        touched.add(`$timeline:${op.name}`);
+        return [{ op: 'setTimeline', name: op.name, def: prev ? clone(prev) : null }];
       }
       case 'deleteComponent': {
         const prev = this.data.components[op.id];

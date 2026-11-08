@@ -1,0 +1,17 @@
+timeline rows
+  #n17 0 opacity:0, y:sm base out
+  #n1f 60 opacity:0, y:sm base out
+  #n1n 120 opacity:0, y:sm base out
+proto start #n1
+proto #ni
+  click navigate #np dissolve base out
+proto #nw
+  click overlay #n1v dissolve fast out
+proto #n21
+  click close
+proto #n1v
+  key:Escape close
+proto #n22
+  click close
+proto #np
+  delay:0 play timeline:rows

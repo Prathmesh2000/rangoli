@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { RangoliDocument } from './document.js';
 import type { ComponentDef, DocumentData, Manifest, Page, TokenTree } from './model.js';
 import { defaultMotion, type MotionDef } from './motion.js';
+import type { PrototypeData, Timeline } from './prototype.js';
 
 const json = (v: unknown) => JSON.stringify(v, null, 2) + '\n';
 
@@ -19,6 +20,7 @@ export async function saveDocument(doc: RangoliDocument, dir: string): Promise<v
   await writeFile(join(dir, 'tokens.json'), json(d.tokens));
   await writeFile(join(dir, 'components.json'), json(d.components));
   await writeFile(join(dir, 'motion.json'), json(d.motion ?? {}));
+  await writeFile(join(dir, 'prototype.json'), json({ ...(d.prototype ?? { interactions: {} }), timelines: d.timelines ?? {} }));
   const keep = new Set<string>();
   for (const page of Object.values(d.pages)) {
     const file = `${page.id}.json`;
@@ -41,6 +43,8 @@ export async function loadDocument(dir: string): Promise<RangoliDocument> {
   for (const p of manifest.pages) pages[p.id] = await read<Page>(join('pages', `${p.id}.json`), { id: p.id, name: p.name, children: [], nodes: {} });
   // documents created before motion existed get the default component motion
   const motion = existsSync(join(dir, 'motion.json')) ? await read<Record<string, MotionDef>>('motion.json', {}) : defaultMotion();
-  const data: DocumentData = { manifest, tokens, components, pages, motion };
+  const proto = await read<PrototypeData & { timelines?: Record<string, Timeline> }>('prototype.json', { interactions: {} });
+  const { timelines, ...prototype } = proto;
+  const data: DocumentData = { manifest, tokens, components, pages, motion, prototype: { ...prototype, interactions: prototype.interactions ?? {} }, timelines: timelines ?? {} };
   return new RangoliDocument(data);
 }

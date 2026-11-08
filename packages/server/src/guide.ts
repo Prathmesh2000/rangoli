@@ -24,6 +24,14 @@ RDL quick reference (one node per line, indentation = children):
     e.g. motion #n7 / enter opacity:0, scale:popIn, y:md base out / exit opacity:0, scale:popIn fast in   ·  "motion #n7 none" removes
   Motion rules: explain change, never decorate; ≤200ms for hover/press; exits faster than enters; no bounce, no hover-lift on static cards.
   Use motion_presets / motion_preset, and motion_curve to "see" timing as numbers.
+- prototype: every top-level frame is a screen.
+    proto start #screen
+    proto #id  then lines: <trigger> <action> [#target] [variant=x] [timeline:name] [transition [dir]] [duration] [easing]
+      trigger: click hover press delay:<ms> key:<Key> · action: navigate overlay close back swap play
+      transition: instant dissolve slide|push left|right|up|down smart (matches layers by name path)
+    timeline name  then lines: #id <startMs> <prop:value>[, …] <duration> <easing>   (single value = FROM)
+  e.g. proto #n7 / click navigate #n20 smart base out  ·  timeline welcome / #n5 0 opacity:0, y:sm base out
+- SEE your work: render_png (screenshot) and motion_filmstrip (animation frames). Look before you say "done".
 Rules: use tokens not raw values; one primary action per view; every script is atomic + one undo step.
 Collaboration: check doc_info for agent mode — in "suggest" mode your rdl_apply becomes a suggestion a human approves.
   Use suggest for big/subjective changes anyway. Check inbox for @agent mentions and reply with comment.

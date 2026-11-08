@@ -237,6 +237,13 @@ code { font-family: var(--mono); font-size: 11px; background: var(--panel-2); pa
 .compare-scale { transform-origin: 0 0; width: max-content; }
 .compare-panes section { overflow-x: hidden; }
 
+/* ---------- prototype ---------- */
+.btn-play { border-color: var(--line-strong); font-weight: 500; }
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.quick .btn { grid-column: 1 / -1; justify-content: center; }
+.start-badge { position: absolute; z-index: 4; transform: translateX(-100%); font-size: 11px; font-weight: 600; line-height: 20px; padding: 0 8px; border-radius: 4px; background: var(--ok); color: #fff; pointer-events: none; white-space: nowrap; }
+.inspector .tabs .tab { padding: 8px 6px; }
+
 /* ---------- tokens ---------- */
 .brand-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .brand-row input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: none; cursor: pointer; flex: none; }

@@ -3,6 +3,7 @@ import { renderFragment, resolveInstance, serializeRdl, type Dim, type Padding, 
 import { indent, lenValue, paintValue, resolvePaintHex, tokenOptions, type Opt } from './helpers';
 import { getState, rdl, useEditor } from './store';
 import { MotionTab } from './MotionTab';
+import { ProtoTab } from './ProtoTab';
 
 const set = (id: string, flags: string, label?: string) => {
   const name = getState().doc?.findNode(id)?.node.name ?? `#${id}`;
@@ -12,7 +13,7 @@ const set = (id: string, flags: string, label?: string) => {
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
   const version = useEditor((s) => s.version);
-  const [tab, setTab] = useState<'design' | 'motion' | 'rdl' | 'css'>('design');
+  const [tab, setTab] = useState<'design' | 'motion' | 'proto' | 'rdl' | 'css'>('design');
   const doc = getState().doc;
   const node = selection.length === 1 && doc ? doc.findNode(selection[0]!)?.node : undefined;
 
@@ -29,14 +30,15 @@ export function Inspector() {
         </div>
       </div>
       <div className="tabs" role="tablist">
-        {(['design', 'motion', 'rdl', 'css'] as const).map((t) => (
+        {(['design', 'motion', 'proto', 'rdl', 'css'] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>
-            {t === 'rdl' ? 'RDL' : t === 'css' ? 'CSS' : t === 'motion' ? 'Motion' : 'Design'}
+            {t === 'rdl' ? 'RDL' : t === 'css' ? 'CSS' : t === 'motion' ? 'Motion' : t === 'proto' ? 'Prototype' : 'Design'}
           </button>
         ))}
       </div>
       {tab === 'design' && <DesignTab node={node} />}
       {tab === 'motion' && <MotionTab node={node} />}
+      {tab === 'proto' && <ProtoTab node={node} />}
       {tab === 'rdl' && <RdlTab node={node} />}
       {tab === 'css' && <CssTab node={node} />}
     </div>

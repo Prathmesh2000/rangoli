@@ -141,6 +141,7 @@ function Toolbar() {
         {editable && <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>}
       </div>
       <div className="tb-right">
+        <button className="btn btn-play" title="Play the clickable prototype in a new tab" onClick={() => window.open('/play', '_blank', 'noopener')}>▶ Play</button>
         {agentActive && <span className="agent-pill" role="status">Agent editing…</span>}
         {others.length > 0 && (
           <div className="presence" aria-label="People in this session">

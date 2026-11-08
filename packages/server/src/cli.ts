@@ -2,6 +2,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { findRunning } from './lock.js';
 import { applyRdl, formatLint, lint, renderDocument, serializeRdl } from '@rangoli/engine';
 import { startPreview } from './http.js';
 import { createMcpServer } from './mcp.js';
@@ -20,7 +22,33 @@ Usage:
   rangoli render <dir.rangoli> -o out.html [--mode dark]            standalone HTML
 
 Connect Claude Code:
-  claude mcp add rangoli -- node <path>/packages/server/dist/cli.js mcp <abs path to dir.rangoli>`;
+  claude mcp add rangoli -- node <path>/packages/server/dist/cli.js mcp <abs path to dir.rangoli>
+  (if the editor is already running for that document, the agent attaches to it — one process, one history)
+Connect over HTTP (e.g. Cursor):  http://127.0.0.1:4400/mcp   (this machine only)`;
+
+/** Pipe JSON-RPC between this process's stdio (the agent) and the running server's /mcp endpoint. */
+async function bridge(url: string, log: (...m: unknown[]) => void): Promise<void> {
+  const stdio = new StdioServerTransport();
+  const http = new StreamableHTTPClientTransport(new URL(url));
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    void http.close().finally(() => process.exit(0));
+  };
+  stdio.onmessage = (m) => {
+    http.send(m).catch((e: unknown) => log('[rangoli] bridge send failed:', e instanceof Error ? e.message : e));
+  };
+  http.onmessage = (m) => {
+    void stdio.send(m);
+  };
+  http.onerror = (e) => log('[rangoli] bridge error:', e.message);
+  stdio.onclose = shutdown;
+  http.onclose = shutdown;
+  process.stdin.on('close', shutdown);
+  await http.start();
+  await stdio.start();
+}
 
 /** Create one invite token per role and print LAN links (owner shares them with teammates). */
 function printInvites(session: Session, lanUrls: string[], log: (...m: unknown[]) => void) {
@@ -57,6 +85,13 @@ async function main() {
       return;
     }
     case 'mcp': {
+      // If an editor/server already has this document open, become a thin stdio↔HTTP bridge to it.
+      const running = await findRunning(target);
+      if (running) {
+        await bridge(`${running.url}mcp`, log);
+        log(`[rangoli] attached to running server ${running.url} (editor: ${running.url}editor/)`);
+        return;
+      }
       const session = await Session.openOrCreate(target);
       let previewUrl: string | undefined;
       if (!rest.includes('--no-preview')) {
@@ -79,6 +114,12 @@ async function main() {
       return;
     }
     case 'serve': {
+      const running = await findRunning(target);
+      if (running) {
+        log(`This document is already open in another Rangoli process: ${running.url}editor/ (pid ${running.pid}).`);
+        process.exitCode = 1;
+        return;
+      }
       const session = await Session.openOrCreate(target);
       const p = await startPreview(session, { port: Number(flag(rest, '--port') ?? 4400), share: rest.includes('--share') });
       log(`Rangoli editor: ${p.url}editor/   preview: ${p.url}  (Ctrl+C to stop)`);

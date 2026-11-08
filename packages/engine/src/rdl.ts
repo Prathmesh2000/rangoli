@@ -13,6 +13,7 @@ import { RangoliDocument, RangoliError, type Op } from './document.js';
 import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
 import { TokenResolver } from './tokens.js';
 import { parseMotionLines, targetKey } from './motion.js';
+import { parseProtoLines, parseTimelineLines } from './prototype.js';
 
 export interface Diagnostic {
   line: number;
@@ -88,13 +89,18 @@ export type Command =
   | { kind: 'move'; line: number; id: string; where: Where }
   | { kind: 'delete'; line: number; id: string }
   | { kind: 'replace'; line: number; id: string; nodes: PNode[] }
-  | { kind: 'motion'; line: number; base: string; filters: Record<string, string>; clear: boolean; lines: { no: number; toks: string[] }[] };
+  | { kind: 'motion'; line: number; base: string; filters: Record<string, string>; clear: boolean; lines: { no: number; toks: string[] }[] }
+  | { kind: 'proto'; line: number; node: string | null; start?: string; clear: boolean; lines: { no: number; toks: string[] }[] }
+  | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
 
 const COMMANDS = new Set(['set', 'insert', 'move', 'delete', 'replace']);
 const isCommandLine = (ln: Line) =>
-  (COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#')) || (ln.toks[0] === 'motion' && /^[@#]/.test(ln.toks[1] ?? ''));
+  (COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#')) ||
+  (ln.toks[0] === 'motion' && /^[@#]/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'proto' && /^(#|start$)/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4);
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
   const lines = lex(src);
@@ -136,6 +142,23 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
         i++;
       }
       commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
+    if ((kw === 'proto' || kw === 'timeline') && isCommandLine(ln)) {
+      i++;
+      const body: { no: number; toks: string[] }[] = [];
+      while (i < lines.length && lines[i]!.indent > ln.indent) {
+        body.push({ no: lines[i]!.no, toks: lines[i]!.toks });
+        i++;
+      }
+      const clear = ln.toks.includes('none');
+      if (kw === 'proto') {
+        if (ln.toks[1] === 'start') {
+          const f = ln.toks[2];
+          if (!f?.startsWith('#') && f !== 'none') errors.push({ line: ln.no, severity: 'error', message: 'Use: proto start #frameId' });
+          commands.push({ kind: 'proto', line: ln.no, node: null, start: f === 'none' ? '' : f?.slice(1), clear: false, lines: [] });
+        } else commands.push({ kind: 'proto', line: ln.no, node: ln.toks[1]!.slice(1), clear, lines: body });
+      } else commands.push({ kind: 'timeline', line: ln.no, name: ln.toks[1]!, clear, lines: body });
       continue;
     }
     if (COMMANDS.has(kw) && ln.toks[1]?.startsWith('#')) {
@@ -440,6 +463,8 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
           // drop motion attached to the deleted subtree (keeps the document free of orphans)
           const drop = (id: string) => {
             for (const key of Object.keys(doc.data.motion ?? {})) if (key === `#${id}` || key.startsWith(`#${id}[`)) ops.push({ op: 'setMotion', target: key, def: null });
+            if (doc.data.prototype?.interactions[id]) ops.push({ op: 'setInteractions', node: id, list: null });
+            if (doc.data.prototype?.start === id) ops.push({ op: 'setProtoStart', frame: null });
             for (const c of page.nodes[id]?.children ?? []) drop(c);
           };
           drop(cmd.id);
@@ -499,6 +524,43 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const given = new Set(specs.map((s) => s.trigger));
         const merged = [...(prev?.specs.filter((s) => !given.has(s.trigger)) ?? []), ...specs];
         ops.push({ op: 'setMotion', target: key, def: { target: key, specs: merged } });
+        break;
+      }
+      case 'proto': {
+        if (cmd.node === null) {
+          if (cmd.start === undefined) break;
+          if (cmd.start && (!page.nodes[cmd.start] || page.nodes[cmd.start]!.parent)) { errors.push({ line: cmd.line, severity: 'error', message: `#${cmd.start} must be a top-level frame (a screen)` }); break; }
+          ops.push({ op: 'setProtoStart', frame: cmd.start || null });
+          break;
+        }
+        const node = page.nodes[cmd.node];
+        if (!node) { errors.push({ line: cmd.line, severity: 'error', message: `#${cmd.node} not found` }); break; }
+        if (cmd.clear) { ops.push({ op: 'setInteractions', node: cmd.node, list: null }); break; }
+        if (!cmd.lines.length) { errors.push({ line: cmd.line, severity: 'error', message: 'proto block is empty — add lines like "  click navigate #frame dissolve", or use "none"' }); break; }
+        const list = parseProtoLines(cmd.lines, errors);
+        for (const it of list) {
+          if (it.action === 'navigate' || it.action === 'overlay') {
+            const t = it.target ? page.nodes[it.target] : undefined;
+            if (!t) errors.push({ line: cmd.line, severity: 'error', message: `${it.action} target #${it.target} not found` });
+            else if (t.parent) errors.push({ line: cmd.line, severity: 'error', message: `${it.action} target #${it.target} must be a top-level frame (a screen); "${t.name}" is nested` });
+          }
+          if (it.action === 'swap') {
+            const t = page.nodes[it.target ?? cmd.node];
+            const comp = t?.component ? doc.data.components[t.component] : undefined;
+            if (!t || !comp) errors.push({ line: cmd.line, severity: 'error', message: `swap target #${it.target ?? cmd.node} must be a component instance` });
+            else for (const [k, v] of Object.entries(it.variant ?? {})) if (!comp.axes[k]?.includes(v)) errors.push({ line: cmd.line, severity: 'error', message: `${comp.name} has no ${k}=${v}` });
+          }
+          if (it.action === 'play' && it.timeline && !doc.data.timelines?.[it.timeline]) errors.push({ line: cmd.line, severity: 'error', message: `timeline "${it.timeline}" not defined (define it with a timeline block first)` });
+        }
+        ops.push({ op: 'setInteractions', node: cmd.node, list });
+        break;
+      }
+      case 'timeline': {
+        if (cmd.clear) { ops.push({ op: 'setTimeline', name: cmd.name, def: null }); break; }
+        if (!cmd.lines.length) { errors.push({ line: cmd.line, severity: 'error', message: 'timeline is empty — add tracks like "  #n7 0 opacity:0, y:sm base out"' }); break; }
+        const tracks = parseTimelineLines(cmd.lines, errors);
+        for (const t of tracks) if (!exists(t.target)) errors.push({ line: cmd.line, severity: 'error', message: `timeline track target #${t.target} not found` });
+        ops.push({ op: 'setTimeline', name: cmd.name, def: { name: cmd.name, tracks } });
         break;
       }
       case 'move': {

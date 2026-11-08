@@ -11,6 +11,8 @@ import {
   formatDiff,
   formatLint,
   previewScript,
+  prototypeHtml,
+  serializePrototype,
   generateCategorical,
   generateNeutralRamp,
   generateRamp,
@@ -30,6 +32,7 @@ import {
   type RNode,
 } from '@rangoli/engine';
 import { INSTRUCTIONS, RDL_HELP } from './guide.js';
+import { filmstrip, renderPng } from './shots.js';
 import type { Session } from './session.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
@@ -110,6 +113,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
           `Token groups: ${groups}`,
           opts.previewUrl ? `Live preview: ${opts.previewUrl}` : '',
           opts.previewUrl ? `Editor (for the human): ${opts.previewUrl}editor/` : '',
+          opts.previewUrl ? `Clickable prototype: ${opts.previewUrl}play` : '',
           `History: ${doc.historyEntries.length} changes`,
           `Agent mode: ${session.agentMode}${session.agentMode === 'suggest' ? ' — rdl_apply creates suggestions for human approval' : ''}`,
           `Review: ${session.reviews.threads.filter((t) => !t.resolved).length} open threads, ${session.reviews.changesets.filter((c) => c.status === 'pending').length} pending suggestions, ${session.agentInbox().length} waiting for you (see inbox)`,
@@ -596,6 +600,65 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
     'versions_list',
     { description: 'Saved versions.', inputSchema: {} },
     safe(() => text(session.reviews.versions.map((v) => `${v.id} "${v.name}" by ${v.author} ${new Date(v.time).toISOString().slice(0, 16).replace('T', ' ')}`).join('\n') || 'No versions saved.')),
+  );
+
+  // ---------------------------------------------------------------- prototype & seeing
+  const image = (png: Buffer, caption: string) => ({
+    content: [
+      { type: 'image' as const, data: png.toString('base64'), mimeType: 'image/png' },
+      { type: 'text' as const, text: caption },
+    ],
+  });
+
+  server.registerTool(
+    'proto_get',
+    { description: 'Read prototype interactions, start screen and timelines as RDL (all, or those involving given node ids).', inputSchema: { nodes: z.array(z.string()).optional() } },
+    safe(({ nodes }) => text(serializePrototype(doc.data.prototype, doc.data.timelines, nodes) || 'No interactions or timelines yet.')),
+  );
+
+  server.registerTool(
+    'prototype_export',
+    {
+      description: 'Export a standalone, dependency-free HTML prototype (all top-level frames as screens; clicks, overlays, swaps, timelines, smart animate). Writes to outFile.',
+      inputSchema: { outFile: z.string().describe('absolute path ending in .html'), start: z.string().optional(), mode: z.enum(['light', 'dark']).optional() },
+    },
+    safe(async ({ outFile, start, mode }) => {
+      const html = prototypeHtml(doc, { start, mode });
+      await writeFile(outFile, html);
+      return text(`Wrote prototype (${Math.round(html.length / 1024)} KB) → ${outFile}${opts.previewUrl ? `\nLive: ${opts.previewUrl}play` : ''}`);
+    }),
+  );
+
+  server.registerTool(
+    'render_png',
+    {
+      description: 'LOOK at the design: returns a PNG screenshot (reference renderer) of given roots or the whole page. Use after changes to check hierarchy, spacing and balance with your own eyes.',
+      inputSchema: { roots: z.array(z.string()).optional(), mode: z.enum(['light', 'dark']).optional(), maxWidth: z.number().int().min(320).max(1600).optional() },
+    },
+    async ({ roots, mode, maxWidth }) => {
+      try {
+        const png = await renderPng(doc, { roots, mode, maxWidth });
+        return image(png, `${roots?.length ? roots.map((r) => `#${r}`).join(' ') : 'page'} · ${mode ?? 'light'}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'motion_filmstrip',
+    {
+      description: 'WATCH an animation: frozen frames of an enter/exit animation ("#id") or a timeline ("timeline:name") side by side in one PNG, with timestamps. Use to judge choreography you cannot see live.',
+      inputSchema: { target: z.string(), trigger: z.enum(['enter', 'exit']).optional(), frames: z.number().int().min(3).max(10).optional(), mode: z.enum(['light', 'dark']).optional() },
+    },
+    async ({ target, trigger, frames, mode }) => {
+      try {
+        const r = await filmstrip(doc, { target, trigger, frames, mode });
+        return image(r.png, `${target} ${trigger ?? ''} · ${r.ms}ms · frames at ${r.times.join(', ')} ms`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
   );
 
   server.registerTool(

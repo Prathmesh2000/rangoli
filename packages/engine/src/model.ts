@@ -166,9 +166,14 @@ export interface DocumentData {
   components: Record<string, ComponentDef>;
   /** motion definitions keyed by target ("@Button", "@Button[variant=primary]", "#n7") */
   motion?: Record<string, MotionDef>;
+  /** clickable prototype: start screen + interactions per node */
+  prototype?: PrototypeData;
+  /** multi-step animations, keyed by name */
+  timelines?: Record<string, Timeline>;
 }
 
 import type { MotionDef } from './motion.js';
+import type { PrototypeData, Timeline } from './prototype.js';
 
 /** W3C DTCG-style token tree. Leaf: { $value, $type?, $description? } */
 export interface TokenLeaf {

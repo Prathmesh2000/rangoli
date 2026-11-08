@@ -183,6 +183,34 @@ Runs col gap6 p6 w960 fill:canvas
     expect(dv.text).toContain('now: Text#n3 headline "Test runs (suggested)"');
   });
 
+  it('prototype: interactions, timeline, export, /play, and the agent can SEE (png + filmstrip)', async () => {
+    // invalid target → whole script rejected atomically
+    const bad = await call('rdl_apply', { script: 'proto #na\n  click navigate #nope smart' });
+    expect(bad.isError).toBe(true);
+    const created = await call('rdl_apply', { script: 'Detail col w480 h320 p6 fill:canvas\n  Title text headline "Login smoke test"' });
+    const detail = /created: #(\w+)/.exec(created.text)![1]!;
+    const ok = await call('rdl_apply', { script: `timeline intro\n  #n7 0 opacity:0, y:sm base out\nproto start #n1\nproto #na\n  click navigate #${detail} smart base out\nproto #n7\n  click play timeline:intro` });
+    expect(ok.isError).toBe(false);
+    expect((await call('proto_get')).text).toContain(`click navigate #${detail} smart base out`);
+
+    const out = join(dir, 'proto.html');
+    const exp = await call('prototype_export', { outFile: out });
+    expect(exp.text).toMatch(/Wrote prototype \(\d+ KB\)/);
+    expect(await readFile(out, 'utf8')).toContain('window.__RP__=');
+    const play = await (await fetch(previewUrl + 'play')).text();
+    expect(play).toContain(`data-screen="${detail}"`);
+
+    const png = (await client.callTool({ name: 'render_png', arguments: { roots: ['n1'] } })) as { content: { type: string; data?: string; mimeType?: string }[] };
+    expect(png.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(Buffer.from(png.content[0]!.data!, 'base64').subarray(1, 4).toString()).toBe('PNG');
+    await call('rdl_apply', { script: 'motion #n5\n  enter opacity:0, y:md base out' });
+    const film = (await client.callTool({ name: 'motion_filmstrip', arguments: { target: '#n5', frames: 4 } })) as { content: { type: string; text?: string }[] };
+    expect(film.content[0]!.type).toBe('image');
+    expect(film.content[1]!.text).toContain('frames at 0, 67, 133, 200 ms');
+    const tlFilm = (await client.callTool({ name: 'motion_filmstrip', arguments: { target: 'timeline:intro' } })) as { content: { type: string }[] };
+    expect(tlFilm.content[0]!.type).toBe('image');
+  }, 60000);
+
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));
     const page = JSON.parse(await readFile(join(dir, 'app.rangoli', 'pages', 'p1.json'), 'utf8')) as { nodes: Record<string, unknown> };

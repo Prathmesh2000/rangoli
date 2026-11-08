@@ -246,7 +246,7 @@ export function renderFragment(doc: RangoliDocument, opts: RenderOptions = {}): 
 
 /** Full CSS: tokens (all modes) + base + component states + node rules. */
 export function renderCss(doc: RangoliDocument, fragmentCss: string, used: string[]): string {
-  return [tokensToCss(doc.data.tokens, ['light', 'dark']), BASE_CSS, componentBaseCss(new Set(used)), fragmentCss, motionCss(doc.data.motion, doc.data.tokens)].filter(Boolean).join('\n\n');
+  return [tokensToCss(doc.data.tokens, ['light', 'dark']), BASE_CSS, componentBaseCss(new Set(used)), fragmentCss, motionCss(doc.data.motion, doc.data.tokens, doc.data.timelines)].filter(Boolean).join('\n\n');
 }
 
 /** Standalone HTML page — the reference render. */

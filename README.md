@@ -33,7 +33,7 @@ node packages/server/dist/cli.js serve ./designs/app.rangoli
 ```bash
 claude mcp add rangoli -- node <abs-path>/packages/server/dist/cli.js mcp <abs-path>/designs/app.rangoli
 ```
-The MCP server also starts the live preview (default port 4400). Open it in a browser: changes appear as the agent works; click elements to select them (the agent reads them with `selection_get`).
+The MCP server also starts the editor (default port 4400). If the editor is already running for that document (`rangoli serve`), the agent attaches to it instead — one process, one history, no overwrites. HTTP MCP clients can connect to `http://127.0.0.1:4400/mcp` directly (this machine only). Open it in a browser: changes appear as the agent works; click elements to select them (the agent reads them with `selection_get`).
 
 Cursor: add the same command under MCP servers in Cursor settings.
 
@@ -53,12 +53,21 @@ move #n6 before #n2
 motion #n1
   enter opacity:0, scale:popIn, y:md base out
   exit opacity:0, scale:popIn fast in
+
+timeline rows
+  #n17 0 opacity:0, y:sm base out
+  #n1f 60 opacity:0, y:sm base out
+proto start #n1
+proto #ni
+  click navigate #np smart base out
 ```
+
+Play it: `http://127.0.0.1:4400/play` (or **▶ Play** in the editor). Export: MCP `prototype_export` → one self-contained HTML file.
 ~3.5× fewer tokens than HTML+CSS for the same UI. Values are design tokens (spacing steps, color names, text styles), so output stays on-system and is themeable (light/dark).
 
 ## MCP tools
 
-`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · rdl_help`
+`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · proto_get · prototype_export · render_png · motion_filmstrip · rdl_help`
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
 

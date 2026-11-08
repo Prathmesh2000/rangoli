@@ -8,6 +8,7 @@ import type { RangoliDocument } from './document.js';
 import { isTokenRef, type Len, type Paint, type RNode, type Style } from './model.js';
 import { TokenResolver } from './tokens.js';
 import { lintMotion } from './motion.js';
+import { timelineDuration } from './prototype.js';
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -227,6 +228,29 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     const motionNode = m.target.startsWith('#') ? m.target.slice(1).replace(/\[.*$/, '') : m.target;
     if (m.target.startsWith('#') && !page.nodes[motionNode]) continue;
     add({ code: m.code, severity: m.severity, node: motionNode, message: `motion ${m.target} ${m.message}` });
+  }
+
+  // prototype rules (P*) — whole-page lint only
+  if (!opts.roots) {
+    for (const [node, list] of Object.entries(doc.data.prototype?.interactions ?? {})) {
+      const n = page.nodes[node];
+      if (!n) continue;
+      for (const it of list) {
+        if (it.target && !page.nodes[it.target]) add({ code: 'P01', severity: 'P0', node, message: `${it.trigger} → ${it.action} targets #${it.target}, which no longer exists`, fix: `proto #${node} none` });
+        if (it.action === 'play' && it.timeline && !doc.data.timelines?.[it.timeline]) add({ code: 'P01', severity: 'P0', node, message: `plays missing timeline "${it.timeline}"` });
+      }
+      const clickable = list.some((i) => i.trigger === 'click');
+      const isControl = n.type === 'instance' && ['button', 'input', 'a'].includes(doc.data.components[n.component ?? '']?.tag ?? '');
+      if (clickable && !isControl && !n.role) add({ code: 'P02', severity: 'P3', node, message: `"${n.name}" is clickable but not a button/link — give it role:button or use @Button so keyboard and screen-reader users can reach it` });
+    }
+    for (const tl of Object.values(doc.data.timelines ?? {})) {
+      const missing = tl.tracks.filter((t) => !page.nodes[t.target]);
+      if (missing.length) add({ code: 'P03', severity: 'P0', node: missing[0]!.target, message: `timeline "${tl.name}" animates missing node(s): ${missing.map((t) => `#${t.target}`).join(', ')}` });
+      const total = timelineDuration(tl, doc.data.tokens);
+      if (total > 1200) add({ code: 'M01', severity: 'P2', node: tl.tracks[0]?.target ?? '', message: `timeline "${tl.name}" runs ${total}ms — keep sequences under ~1s so people are not kept waiting` });
+      const starts = [...new Set(tl.tracks.map((t) => t.at))].sort((a, b) => a - b);
+      if (starts.length > 6) add({ code: 'M08', severity: 'P3', node: tl.tracks[0]?.target ?? '', message: `timeline "${tl.name}" staggers ${starts.length} steps — cap staggered reveals at ~6 items` });
+    }
   }
 
   if (textStyles.size > 6) add({ code: 'D05', severity: 'P3', node: roots[0] ?? '', message: `${textStyles.size} different text styles in view — aim for ≤ 6 for a clear type scale` });
