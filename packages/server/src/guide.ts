@@ -31,9 +31,14 @@ RDL quick reference (one node per line, indentation = children):
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)
 - components (≈30, see components_list / component_help): Button IconButton Link · Input Textarea Select SearchInput Checkbox Radio
     Switch Slider Segmented Rating · Badge Chip Tag Status Avatar Kbd Divider Tooltip Skeleton Spinner ProgressBar RunBar ·
-    Tabs Breadcrumbs Pagination Stepper · Alert Toast.   e.g. @Status variant=failed · @Tabs selected=1 "Overview|Runs:24|Settings"
+    Tabs Breadcrumbs Pagination Stepper · Alert Toast · Chart(kind=column|bar|line|area|stacked|donut|heatmap) Sparkline Meter ·
+    CodeBlock NumberInput TagInput OTP AvatarGroup ColorPicker · Video Carousel.   e.g. @Status variant=failed · @Tabs selected=1 "Overview|Runs:24|Settings"
+    charts: @Chart kind=line w560 h240 data="94,96,98;…" labels="Mon|Tue|Wed" series="A|B" unit="%" "Title" — one axis, ≤8 series, fixed colours
 - patterns (one line → editable layers, see patterns_list / pattern_help): +page-header +stats +toolbar +table +sidebar-nav +topbar
-    +form +form-field +settings-row +modal +drawer +dropdown-menu +command-palette +empty-state +run-summary +test-case …
+    +form +form-field +settings-row +modal +drawer +dropdown-menu +command-palette +empty-state +run-summary +test-case
+    +login +signup +verify-code · +kanban +comments +chat +notifications +onboarding-checklist +timeline +profile-card ·
+    +navbar +hero +feature-grid +testimonial +faq +logo-cloud +cta-band +pricing +blog-grid · +product-card +product-grid
+    +cart-summary +checkout +order-tracking · +stack-trace +log-viewer +rich-text-editor +calendar-month +file-list +search-results +chart-card …
     e.g.  +table cols="Run|Status|Owner|Duration" rows=6 select=true   — build whole screens from patterns, then refine with set/insert.
 - edit: set #id <flags> ["text"] · insert #id start|end|index N (children) · insert #id before|after (siblings) · move #id before|after #x · move #id into #p [start|end] · delete #id · replace #id + block
 - motion (block): motion @Button [variant=primary] | motion #id   then indented lines:

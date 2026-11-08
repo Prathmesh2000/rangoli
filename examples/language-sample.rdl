@@ -10,9 +10,9 @@ Screen col gap5 p6 w640 fill:canvas
     @Alert variant=warning title="Flaky tests detected" "3 tests failed then passed on retry."
     Opts row gap4
       @Checkbox checked=true "Failures"
-      @Switch on=true "Daily digest"
+      @Switch checked=true "Daily digest"
       @Chip variant=success "Passing"
-    Actions row gap2 end wfill
+    Actions row gap2 jend wfill
       @Button variant=ghost "Cancel"
       @Button variant=secondary "Preview"
       @Button variant=primary "Save changes"

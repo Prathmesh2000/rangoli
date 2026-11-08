@@ -291,6 +291,22 @@ export function defaultTokens(opts: DefaultTokenOptions = {}): TokenTree {
         danger: sem('color.error.600', 'color.error.400'),
         dangerHover: sem('color.error.700', 'color.error.300'),
       },
+      // data viz: validated categorical order (fixed, never cycled or brand-generated), light and dark selected separately
+      chart: {
+        '1': leaf('#2a78d6', 'color', { dark: '#3987e5' }), '2': leaf('#eb6834', 'color', { dark: '#d95926' }),
+        '3': leaf('#1baf7a', 'color', { dark: '#199e70' }), '4': leaf('#eda100', 'color', { dark: '#c98500' }),
+        '5': leaf('#e87ba4', 'color', { dark: '#d55181' }), '6': leaf('#008300', 'color', { dark: '#008300' }),
+        '7': leaf('#6250d6', 'color', { dark: '#9085e9' }), '8': leaf('#e34948', 'color', { dark: '#e66767' }),
+        grid: sem('color.neutral.100', 'color.neutral.800', 'Hairline gridlines'),
+        axis: sem('color.neutral.300', 'color.neutral.700', 'Baseline / axis'),
+        // sequential (heatmaps): one hue; the lightest step is "near zero" and recedes toward the surface in both modes
+        seq: {
+          '1': leaf('#cde2fb', 'color', { dark: '#1c2a3d' }), '2': leaf('#9ec5f4', 'color', { dark: '#184f95' }),
+          '3': leaf('#6da7ec', 'color', { dark: '#1c5cab' }), '4': leaf('#3987e5', 'color', { dark: '#256abf' }),
+          '5': leaf('#256abf', 'color', { dark: '#3987e5' }), '6': leaf('#184f95', 'color', { dark: '#6da7ec' }),
+          '7': leaf('#0d366b', 'color', { dark: '#9ec5f4' }),
+        },
+      },
       status: {
         success: { fg: sem('color.success.700', 'color.success.300'), bg: sem('color.success.50', 'color.success.900') },
         warning: { fg: sem('color.warning.800', 'color.warning.300'), bg: sem('color.warning.50', 'color.warning.900') },

@@ -785,7 +785,7 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
   // ---------------------------------------------------------------- component library & patterns
   server.registerTool(
     'components_list',
-    { description: 'All components (≈30) by category with variant axes and one-line usage. Use before designing.', inputSchema: { category: z.enum(['Actions', 'Inputs', 'Display', 'Navigation', 'Feedback', 'Data']).optional() } },
+    { description: 'All components (≈30) by category with variant axes and one-line usage. Use before designing.', inputSchema: { category: z.enum(['Actions', 'Inputs', 'Display', 'Navigation', 'Feedback', 'Data', 'Charts', 'Media']).optional() } },
     safe(({ category }) => {
       const rows = Object.entries(LIBRARY).filter(([, d]) => !category || d.doc.category === category);
       const byCat = new Map<string, string[]>();

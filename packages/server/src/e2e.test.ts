@@ -212,7 +212,7 @@ Runs col gap6 p6 w960 fill:canvas
   }, 60000);
 
   it('icons: list, draft variants, render sheet with lint, use in design, export', async () => {
-    expect((await call('icon_list')).text).toMatch(/^ui \(grid24 stroke1\.5 round\): search plus close/);
+    expect((await call('icon_list')).text).toMatch(/^ui \(grid24 stroke1\.5 round\): search .*\bplus close\b/);
     const got = await call('icon_get', { names: ['clock'] });
     expect(got.text).toBe('icon ui/clock\n  circle 12 12 8.5\n  polyline 12 7.5 12 12 15 14');
     const drafts = await call('rdl_apply', { script: 'icon drafts/run~1\n  path M8 5.5 L18.5 12 L8 18.5 Z\nicon drafts/run~2 stroke2\n  path M7 4 L20 12 L7 20 Z' });

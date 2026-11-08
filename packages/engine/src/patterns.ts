@@ -8,7 +8,7 @@
  * editable, lintable and themeable. Patterns may be nested anywhere a node line is allowed.
  */
 export interface PatternSpec {
-  category: 'Layout' | 'Navigation' | 'Forms' | 'Overlays' | 'Data' | 'Feedback' | 'Marketing' | 'Testing';
+  category: 'Layout' | 'Navigation' | 'Forms' | 'Overlays' | 'Data' | 'Feedback' | 'Marketing' | 'Testing' | 'Auth' | 'Collaboration' | 'Commerce' | 'Developer';
   description: string;
   params: Record<string, string>; // name → default (documented)
   rdl: (p: Record<string, string>) => string;
@@ -508,3 +508,7 @@ export function patternHelp(name?: string): string {
     .map(([k, s]) => (name ? `+${k} — ${s.description}\n  params: ${Object.entries(s.params).map(([pk, pv]) => `${pk}=${q(pv)}`).join(' ')}` : `+${k} [${s.category}] — ${s.description}`))
     .join('\n');
 }
+
+// auth, collaboration, marketing, commerce, developer and dashboard screens live in patterns-more.ts
+import { MORE_PATTERNS } from './patterns-more.js';
+Object.assign(PATTERNS, MORE_PATTERNS);

@@ -354,7 +354,7 @@ class Renderer {
 function componentBaseCss(used: Set<string>): string {
   const out: string[] = [];
   for (const id of used) if (COMPONENT_CSS[id]) out.push(COMPONENT_CSS[id]!);
-  if (['Button', 'Status', 'Spinner'].some((c) => used.has(c))) out.push(SHARED_CSS);
+  if (['Button', 'Status', 'Spinner', 'Chart'].some((c) => used.has(c))) out.push(SHARED_CSS);
   return out.join('\n');
 }
 

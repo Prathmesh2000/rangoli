@@ -185,7 +185,8 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     if (st.radius !== undefined && (n.type === 'frame' || n.type === 'instance')) radii.add(JSON.stringify(st.radius));
 
     // D04 nested cards
-    const card = n.type === 'frame' && !n.absolute && isCardLike(st); // floating badges/overlays are not nested cards
+    // a card holds content: dots, swatches and floating badges/overlays are not nested cards
+    const card = n.type === 'frame' && !n.absolute && !!n.children?.length && isCardLike(st);
     if (card && cardDepth > 0) add({ code: 'D04', severity: 'P2', node: n.id, message: 'Card nested inside a card. Use spacing or a divider instead of another box.' });
 
     // text checks

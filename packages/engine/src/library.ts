@@ -21,7 +21,7 @@ export interface PropSpec {
 
 /** Extra documentation for agents/editor (props beyond variant axes). */
 export interface ComponentDoc {
-  category: 'Actions' | 'Inputs' | 'Display' | 'Navigation' | 'Feedback' | 'Data';
+  category: 'Actions' | 'Inputs' | 'Display' | 'Navigation' | 'Feedback' | 'Data' | 'Charts' | 'Media';
   description: string;
   props?: Record<string, PropSpec>;
   example: string;
@@ -29,7 +29,7 @@ export interface ComponentDoc {
   noLabel?: boolean;
 }
 
-type Def = ComponentDef & { doc: ComponentDoc };
+export type Def = ComponentDef & { doc: ComponentDoc };
 
 const variantStyles = (axis: string, map: Record<string, Style>): ComponentDef['styles'] => Object.entries(map).map(([v, style]) => ({ when: { [axis]: v }, style }));
 const STATUS = ['neutral', 'info', 'success', 'warning', 'error'] as const;
@@ -522,4 +522,10 @@ export const COMPONENT_CSS: Record<string, string> = {
 };
 
 /** Shared spinner CSS (used by Button loading, Status running, Spinner). */
-export const SHARED_CSS = `.rk-spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rk-rot .7s linear infinite;flex-shrink:0}.rk-spin-xs{width:9px;height:9px;border-width:1.5px}.rk-spin-fill{width:100%;height:100%;border-width:2px}@keyframes rk-rot{to{transform:rotate(360deg)}}@media (prefers-reduced-motion: reduce){.rk-spin{animation-duration:2s}}`;
+export const SHARED_CSS = `.rk-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.rk-spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rk-rot .7s linear infinite;flex-shrink:0}.rk-spin-xs{width:9px;height:9px;border-width:1.5px}.rk-spin-fill{width:100%;height:100%;border-width:2px}@keyframes rk-rot{to{transform:rotate(360deg)}}@media (prefers-reduced-motion: reduce){.rk-spin{animation-duration:2s}}`;
+
+// charts, rich inputs and media live in library-data.ts
+import { DATA_ANATOMY, DATA_CSS, DATA_LIBRARY } from './library-data.js';
+Object.assign(LIBRARY, DATA_LIBRARY);
+Object.assign(ANATOMY, DATA_ANATOMY);
+Object.assign(COMPONENT_CSS, DATA_CSS);
