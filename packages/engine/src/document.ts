@@ -2,6 +2,7 @@ import { IdGen } from './ids.js';
 import type { ComponentDef, DocumentData, Page, RNode, TokenTree } from './model.js';
 import type { MotionDef } from './motion.js';
 import type { Interaction, Timeline } from './prototype.js';
+import type { IconDef, IconSet } from './icons.js';
 
 /** Atomic edit operations. Every op is reversible. */
 export type Op =
@@ -17,6 +18,8 @@ export type Op =
   | { op: 'setInteractions'; node: string; list: Interaction[] | null }
   | { op: 'setProtoStart'; frame: string | null }
   | { op: 'setTimeline'; name: string; def: Timeline | null }
+  | { op: 'setIconSet'; name: string; def: IconSet | null }
+  | { op: 'setIcon'; set: string; name: string; icon: IconDef | null }
   /** internal: restore a deleted subtree exactly */
   | { op: 'restore'; page: string; nodes: RNode[]; parent?: string; index: number };
 
@@ -355,6 +358,23 @@ export class RangoliDocument {
         else delete tl[op.name];
         touched.add(`$timeline:${op.name}`);
         return [{ op: 'setTimeline', name: op.name, def: prev ? clone(prev) : null }];
+      }
+      case 'setIconSet': {
+        const sets = (this.data.icons ??= {});
+        const prev = sets[op.name];
+        if (op.def) sets[op.name] = clone(op.def);
+        else delete sets[op.name];
+        touched.add(`$iconset:${op.name}`);
+        return [{ op: 'setIconSet', name: op.name, def: prev ? clone(prev) : null }];
+      }
+      case 'setIcon': {
+        const set = this.data.icons?.[op.set];
+        if (!set) throw new RangoliError('ICONSET_NOT_FOUND', `Icon set "${op.set}" not found`);
+        const prev = set.icons[op.name];
+        if (op.icon) set.icons[op.name] = clone(op.icon);
+        else delete set.icons[op.name];
+        touched.add(`$icon:${op.set}/${op.name}`);
+        return [{ op: 'setIcon', set: op.set, name: op.name, icon: prev ? clone(prev) : null }];
       }
       case 'deleteComponent': {
         const prev = this.data.components[op.id];

@@ -3,7 +3,7 @@ import { renderCss, renderFragment, type RangoliDocument } from '@rangoli/engine
 import { clearCompare, getState, select, setHover, setRightTab, setZoom, useEditor } from './store';
 
 /** Render a document into a shadow root (shared by canvas and compare panes). */
-function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''): void {
+export function renderInto(root: ShadowRoot, doc: RangoliDocument, extraCss = ''): void {
   const frag = renderFragment(doc, { editorAttrs: true });
   const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
   root.innerHTML = `<style>${css}

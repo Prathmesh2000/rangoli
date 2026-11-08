@@ -5,8 +5,9 @@ import { duplicateScript, indent, stripIds } from './helpers';
 import { Inspector } from './Inspector';
 import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
+import { IconStudio } from './IconStudio';
 import { ReviewPanel } from './ReviewPanel';
-import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setZoom, undo, useEditor, myClientId } from './store';
+import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId } from './store';
 
 const INSERTS: { key: string; label: string; rdl: string }[] = [
   { key: 'frame', label: 'Frame', rdl: 'Frame col gap3 p4 w320 fill:surface stroke:border r3' },
@@ -46,7 +47,7 @@ function useShortcuts() {
       if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); requestFit(); return; }
       if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(s.zoom * 1.2); return; }
       if (mod && e.key === '-') { e.preventDefault(); setZoom(s.zoom / 1.2); return; }
-      if (!doc) return;
+      if (!doc || s.view === 'icons') return;
       if (!canEdit()) {
         // viewers/reviewers: navigation only
         if (e.key === 'Escape') select([]);
@@ -119,7 +120,8 @@ function Toolbar() {
   const role = useEditor((s) => s.role);
   const presence = useEditor((s) => s.presence);
   const others = presence.filter((p) => p.clientId !== myClientId);
-  const editable = role === 'owner' || role === 'editor';
+  const view = useEditor((s) => s.view);
+  const editable = (role === 'owner' || role === 'editor') && view === 'design';
 
   return (
     <header className="toolbar">
@@ -127,6 +129,10 @@ function Toolbar() {
         <span className="brand" aria-hidden>◈</span>
         <span className="doc-name">{name}</span>
         {role !== 'owner' && <span className="role-badge" title="Your access in this session">{role}</span>}
+        <div className="seg" role="radiogroup" aria-label="Workspace">
+          <button role="radio" aria-checked={view === 'design'} className="seg-item" onClick={() => setView('design')}>Design</button>
+          <button role="radio" aria-checked={view === 'icons'} className="seg-item" onClick={() => setView('icons')}>Icons</button>
+        </div>
         {editable && <div className="menu-wrap">
           <button className="btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>Insert ▾</button>
           {menu && (
@@ -157,12 +163,14 @@ function Toolbar() {
           <button role="radio" aria-checked={mode === 'light'} className="seg-item" onClick={() => setMode('light')}>Light</button>
           <button role="radio" aria-checked={mode === 'dark'} className="seg-item" onClick={() => setMode('dark')}>Dark</button>
         </div>
-        <div className="zoom">
-          <button className="btn btn-icon" aria-label="Zoom out" onClick={() => setZoom(zoom / 1.2)}>−</button>
-          <button className="btn zoom-val" title="Reset zoom (Ctrl+0)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
-          <button className="btn btn-icon" aria-label="Zoom in" onClick={() => setZoom(zoom * 1.2)}>+</button>
-          <button className="btn" title="Zoom to fit (Shift+1)" onClick={requestFit}>Fit</button>
-        </div>
+        {view === 'design' && (
+          <div className="zoom">
+            <button className="btn btn-icon" aria-label="Zoom out" onClick={() => setZoom(zoom / 1.2)}>−</button>
+            <button className="btn zoom-val" title="Reset zoom (Ctrl+0)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+            <button className="btn btn-icon" aria-label="Zoom in" onClick={() => setZoom(zoom * 1.2)}>+</button>
+            <button className="btn" title="Zoom to fit (Shift+1)" onClick={requestFit}>Fit</button>
+          </div>
+        )}
         <span className={`conn ${connected ? 'is-on' : ''}`} title={connected ? 'Live: synced with server and agents' : 'Disconnected — retrying'} role="status" aria-label={connected ? 'Connected' : 'Disconnected'} />
       </div>
     </header>
@@ -177,6 +185,17 @@ export function App() {
   const reviewCount = useEditor((s) => s.reviews.threads.filter((t) => !t.resolved).length + s.reviews.changesets.filter((c) => c.status === 'pending').length);
   const tab = useEditor((s) => s.rightTab);
   const setTab = (t: typeof tab) => setRightTab(t);
+
+  const view = useEditor((s) => s.view);
+  if (view === 'icons') {
+    return (
+      <div className="app">
+        <Toolbar />
+        <IconStudio />
+        {toastMsg && <div className={`toast toast-${toastMsg.kind}`} role="alert">{toastMsg.text}</div>}
+      </div>
+    );
+  }
 
   return (
     <div className="app">

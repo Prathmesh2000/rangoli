@@ -1,0 +1,107 @@
+{
+  "ui": {
+    "name": "ui",
+    "grid": 24,
+    "stroke": 1.5,
+    "cap": "round",
+    "join": "round",
+    "icons": {
+      "search": {
+        "name": "search",
+        "src": "circle 11 11 6\nline 15.5 15.5 20 20"
+      },
+      "plus": {
+        "name": "plus",
+        "src": "line 12 5 12 19\nline 5 12 19 12"
+      },
+      "close": {
+        "name": "close",
+        "src": "line 6 6 18 18\nline 18 6 6 18"
+      },
+      "check": {
+        "name": "check",
+        "src": "polyline 5 12.5 10 17.5 19 7"
+      },
+      "chevron-right": {
+        "name": "chevron-right",
+        "src": "polyline 9 6 15 12 9 18"
+      },
+      "chevron-left": {
+        "name": "chevron-left",
+        "src": "polyline 15 6 9 12 15 18"
+      },
+      "chevron-down": {
+        "name": "chevron-down",
+        "src": "polyline 6 9 12 15 18 9"
+      },
+      "play": {
+        "name": "play",
+        "src": "path M8 5.5 L18.5 12 L8 18.5 Z"
+      },
+      "stop": {
+        "name": "stop",
+        "src": "rect 6 6 12 12 r=2"
+      },
+      "more": {
+        "name": "more",
+        "src": "dot 6 12\ndot 12 12\ndot 18 12"
+      },
+      "filter": {
+        "name": "filter",
+        "src": "line 4 6.5 20 6.5\nline 7 12 17 12\nline 10 17.5 14 17.5"
+      },
+      "flask": {
+        "name": "flask",
+        "src": "line 9.5 3.5 14.5 3.5\npath M10.5 3.5 L10.5 9.5 L5.5 18 Q4.5 20 6.5 20 L17.5 20 Q19.5 20 18.5 18 L13.5 9.5 L13.5 3.5\nline 7.5 15 16.5 15"
+      },
+      "clock": {
+        "name": "clock",
+        "src": "circle 12 12 8.5\npolyline 12 7.5 12 12 15 14"
+      },
+      "alert": {
+        "name": "alert",
+        "src": "circle 12 12 8.5\nline 12 7.5 12 13\ndot 12 16.5 1"
+      },
+      "info": {
+        "name": "info",
+        "src": "circle 12 12 8.5\nline 12 11 12 16.5\ndot 12 7.5 1"
+      },
+      "trash": {
+        "name": "trash",
+        "src": "line 4.5 7 19.5 7\npolyline 9 7 9 4.5 15 4.5 15 7\npath M6.5 7 L7.5 19.5 L16.5 19.5 L17.5 7\nline 10 11 10 16\nline 14 11 14 16"
+      },
+      "edit": {
+        "name": "edit",
+        "src": "path M15.5 4.5 L19.5 8.5 L9 19 L4.5 19.5 L5 15 Z\nline 13.5 6.5 17.5 10.5"
+      },
+      "external": {
+        "name": "external",
+        "src": "polyline 14 4.5 19.5 4.5 19.5 10\nline 19.5 4.5 11 13\npolyline 17 13.5 17 19.5 4.5 19.5 4.5 7 10.5 7"
+      },
+      "user": {
+        "name": "user",
+        "src": "circle 12 8.5 3.5\npath M5 19.5 Q5 14.5 12 14.5 Q19 14.5 19 19.5"
+      },
+      "calendar": {
+        "name": "calendar",
+        "src": "rect 4.5 5.5 15 14 r=2\nline 4.5 10 19.5 10\nline 9 3.5 9 7\nline 15 3.5 15 7"
+      },
+      "retry": {
+        "name": "retry",
+        "src": "arc 12 12 7.5 0 315\npolyline 19.5 4 19.5 8.5 15 8.5"
+      },
+      "flask-check": {
+        "name": "flask-check",
+        "src": "line 9.5 3.5 14.5 3.5\npath M10.5 3.5 L10.5 9.5 L5.5 18 Q4.5 20 6.5 20 L17.5 20 Q19.5 20 18.5 18 L13.5 9.5 L13.5 3.5\nline 7.5 15 16.5 15\npolyline 10 17.5 11.5 18.5 14 16.5"
+      }
+    }
+  },
+  "drafts": {
+    "name": "drafts",
+    "grid": 24,
+    "stroke": 1.5,
+    "cap": "round",
+    "join": "round",
+    "icons": {}
+  }
+}

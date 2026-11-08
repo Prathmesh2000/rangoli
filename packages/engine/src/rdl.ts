@@ -14,6 +14,7 @@ import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, ty
 import { TokenResolver } from './tokens.js';
 import { parseMotionLines, targetKey } from './motion.js';
 import { parseProtoLines, parseTimelineLines } from './prototype.js';
+import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
 
 export interface Diagnostic {
   line: number;
@@ -91,7 +92,9 @@ export type Command =
   | { kind: 'replace'; line: number; id: string; nodes: PNode[] }
   | { kind: 'motion'; line: number; base: string; filters: Record<string, string>; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'proto'; line: number; node: string | null; start?: string; clear: boolean; lines: { no: number; toks: string[] }[] }
-  | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] };
+  | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] }
+  | { kind: 'iconset'; line: number; name: string; opts: string[] }
+  | { kind: 'icon'; line: number; set: string; name: string; opts: string[]; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
 
@@ -100,7 +103,9 @@ const isCommandLine = (ln: Line) =>
   (COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#')) ||
   (ln.toks[0] === 'motion' && /^[@#]/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'proto' && /^(#|start$)/.test(ln.toks[1] ?? '')) ||
-  (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4);
+  (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4) ||
+  (ln.toks[0] === 'icon' && /^[\w-]+\/[\w~.-]+$/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? ''));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
   const lines = lex(src);
@@ -142,6 +147,20 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
         i++;
       }
       commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
+    if ((kw === 'icon' || kw === 'iconset') && isCommandLine(ln)) {
+      i++;
+      const body: { no: number; toks: string[] }[] = [];
+      while (i < lines.length && lines[i]!.indent > ln.indent) {
+        body.push({ no: lines[i]!.no, toks: lines[i]!.toks });
+        i++;
+      }
+      if (kw === 'iconset') commands.push({ kind: 'iconset', line: ln.no, name: ln.toks[1]!, opts: ln.toks.slice(2) });
+      else {
+        const [set, name] = ln.toks[1]!.split('/') as [string, string];
+        commands.push({ kind: 'icon', line: ln.no, set, name, opts: ln.toks.slice(2), lines: body });
+      }
       continue;
     }
     if ((kw === 'proto' || kw === 'timeline') && isCommandLine(ln)) {
@@ -228,6 +247,7 @@ function lineToPNode(ln: Line): PNode {
 export interface RdlContext {
   tokens: TokenResolver;
   components: RangoliDocument['data']['components'];
+  icons?: RangoliDocument['data']['icons'];
 }
 
 function lenFrom(group: 'space' | 'radius', v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): Len | undefined {
@@ -308,6 +328,17 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if ((m = /^opacity:(\d*\.?\d+)$/.exec(f))) { style().opacity = parseFloat(m[1]!); continue; }
     if ((m = /^role:(.+)$/.exec(f))) { node.role = m[1]; continue; }
     if ((m = /^name:(.+)$/.exec(f))) { node.name = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!; continue; }
+    if ((m = /^icon:([\w-]+(?:\/[\w~.-]+)?)$/.exec(f))) {
+      const found = findIcon(ctx.icons, m[1]!);
+      if (!found) {
+        const all = Object.values(ctx.icons ?? {}).flatMap((s) => Object.keys(s.icons).map((n) => `${s.name}/${n}`));
+        diag.push({ line, severity: 'error', message: `Unknown icon "${m[1]}". Available: ${all.slice(0, 30).join(' ')}${all.length > 30 ? ' …' : ''}` });
+      } else {
+        node.icon = `${found.set.name}/${found.icon.name}`;
+        node.type = 'vector';
+      }
+      continue;
+    }
     if ((m = /^at:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(f))) { node.position = { x: parseFloat(m[1]!), y: parseFloat(m[2]!) }; continue; }
     if ((m = /^align:(left|center|right)$/.exec(f))) { style().textAlign = m[1] as 'left'; continue; }
     if (f === 'muted') { style().color = { token: ctx.tokens.find('text.muted', 'color') ?? 'color.text.muted' }; continue; }
@@ -396,7 +427,7 @@ export function compileRdl(doc: RangoliDocument, src: string, opts: CompileOptio
 
 function compileCommands(doc: RangoliDocument, commands: Command[], opts: CompileOptions): CompileResult {
   const errors: Diagnostic[] = [];
-  const ctx: RdlContext = { tokens: new TokenResolver(doc.data.tokens), components: doc.data.components };
+  const ctx: RdlContext = { tokens: new TokenResolver(doc.data.tokens), components: doc.data.components, icons: doc.data.icons };
   const ops: Op[] = [];
   const created: string[] = [];
   const page = doc.page(opts.page);
@@ -524,6 +555,48 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const given = new Set(specs.map((s) => s.trigger));
         const merged = [...(prev?.specs.filter((s) => !given.has(s.trigger)) ?? []), ...specs];
         ops.push({ op: 'setMotion', target: key, def: { target: key, specs: merged } });
+        break;
+      }
+      case 'iconset': {
+        const prev = doc.data.icons?.[cmd.name];
+        if (cmd.opts.includes('none')) { ops.push({ op: 'setIconSet', name: cmd.name, def: null }); break; }
+        const def: IconSet = prev ? structuredClone(prev) : { name: cmd.name, grid: 24, stroke: 1.5, cap: 'round', join: 'round', icons: {} };
+        for (const o of cmd.opts) {
+          let m: RegExpExecArray | null;
+          if ((m = /^grid(\d+)$/.exec(o))) def.grid = Number(m[1]);
+          else if ((m = /^stroke(\d*\.?\d+)$/.exec(o))) def.stroke = Number(m[1]);
+          else if (o === 'round' || o === 'butt' || o === 'square') { def.cap = o; def.join = o === 'round' ? 'round' : 'miter'; }
+          else errors.push({ line: cmd.line, severity: 'error', message: `iconset option "${o}" — use gridN strokeN round|butt|square, or none` });
+        }
+        ops.push({ op: 'setIconSet', name: cmd.name, def });
+        break;
+      }
+      case 'icon': {
+        let set = doc.data.icons?.[cmd.set];
+        if (!set) {
+          // creating an icon in a new set (e.g. "drafts") inherits the conventions of the first set
+          const base = Object.values(doc.data.icons ?? {})[0];
+          set = { name: cmd.set, grid: base?.grid ?? 24, stroke: base?.stroke ?? 1.5, cap: base?.cap ?? 'round', join: base?.join ?? 'round', icons: {} };
+          ops.push({ op: 'setIconSet', name: cmd.set, def: set }); // applied before the setIcon below (same batch)
+        }
+        if (cmd.opts.includes('none')) {
+          if (!set.icons[cmd.name]) errors.push({ line: cmd.line, severity: 'error', message: `icon ${cmd.set}/${cmd.name} not found` });
+          else ops.push({ op: 'setIcon', set: cmd.set, name: cmd.name, icon: null });
+          break;
+        }
+        if (!cmd.lines.length) { errors.push({ line: cmd.line, severity: 'error', message: 'icon block is empty — add shapes like "  circle 12 12 8.5" (or use "none")' }); break; }
+        const src = cmd.lines.map((l) => l.toks.join(' ')).join('\n');
+        const diag: Diagnostic[] = [];
+        compileIcon(src, diag);
+        for (const d of diag) errors.push({ ...d, line: cmd.lines[d.line - 1]?.no ?? cmd.line });
+        const def: IconDef = { name: cmd.name, src };
+        for (const o of cmd.opts) {
+          let m: RegExpExecArray | null;
+          if ((m = /^stroke(\d*\.?\d+)$/.exec(o))) def.stroke = Number(m[1]);
+          else if ((m = /^tags=(.+)$/.exec(o))) def.tags = m[1]!.split(',');
+          else errors.push({ line: cmd.line, severity: 'error', message: `icon option "${o}" — use strokeN, tags=a,b or none` });
+        }
+        ops.push({ op: 'setIcon', set: cmd.set, name: cmd.name, icon: def });
         break;
       }
       case 'proto': {
@@ -719,6 +792,12 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
     if (st.mono) parts.push('mono');
     if (st.truncate) parts.push('truncate');
     if (st.clip) parts.push('clip');
+  }
+  if (n.icon) {
+    // short name when unambiguous
+    const short = n.icon.split('/')[1]!;
+    const f = findIcon(doc.data.icons, short);
+    parts.push(`icon:${f && `${f.set.name}/${f.icon.name}` === n.icon ? short : n.icon}`);
   }
   if (n.position) parts.push(`at:${n.position.x},${n.position.y}`);
   if (n.role) parts.push(`role:${n.role}`);

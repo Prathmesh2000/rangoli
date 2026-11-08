@@ -31,7 +31,13 @@ RDL quick reference (one node per line, indentation = children):
       transition: instant dissolve slide|push left|right|up|down smart (matches layers by name path)
     timeline name  then lines: #id <startMs> <prop:value>[, …] <duration> <easing>   (single value = FROM)
   e.g. proto #n7 / click navigate #n20 smart base out  ·  timeline welcome / #n5 0 opacity:0, y:sm base out
-- SEE your work: render_png (screenshot) and motion_filmstrip (animation frames). Look before you say "done".
+- icons: use in designs as  Icon icon:clock w16 h16 color:text.secondary  (inside @Button/@Chip it leads the label, color = currentColor)
+    define/edit:  icon ui/flask-check   then shape lines on a 24 grid, live area 1.5–22.5, coordinates on 0.5 steps:
+      line x1 y1 x2 y2 · polyline x y … · polygon x y … · rect x y w h r=2 · circle cx cy r · dot cx cy [r] · arc cx cy r startDeg endDeg
+      plus cx cy size · path M L H V Q C Z (absolute only)
+    Match the set: same stroke (no per-icon stroke), similar optical size, ≤ 8 shapes, no detail < 1 unit.
+    Variants for a human to pick: icon drafts/<name>~1 … ~4, then icon_render them together. icon_list / icon_get / icon_export.
+- SEE your work: render_png (screenshot), motion_filmstrip (animation frames), icon_render (icons at sizes + in context). Look before you say "done".
 Rules: use tokens not raw values; one primary action per view; every script is atomic + one undo step.
 Collaboration: check doc_info for agent mode — in "suggest" mode your rdl_apply becomes a suggestion a human approves.
   Use suggest for big/subjective changes anyway. Check inbox for @agent mentions and reply with comment.

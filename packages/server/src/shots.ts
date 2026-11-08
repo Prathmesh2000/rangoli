@@ -2,7 +2,7 @@
  * Let agents SEE: PNG screenshots of the design and animation filmstrips, rendered by the
  * reference renderer in the system's Edge/Chrome (playwright-core, no browser download).
  */
-import { renderCss, renderFragment, resolveTiming, timelineDuration, TokenResolver, type RangoliDocument } from '@rangoli/engine';
+import { applyRdl, cloneDocument, findIcon, iconSvg, renderCss, renderFragment, resolveTiming, timelineDuration, TokenResolver, type RangoliDocument } from '@rangoli/engine';
 
 type Browser = { newPage(o: object): Promise<Page>; close(): Promise<void> };
 type Page = {
@@ -63,6 +63,50 @@ export async function renderPng(doc: RangoliDocument, opts: { roots?: string[]; 
       if (w > m) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = String(m / w);
     }, max);
     return await p.locator('#shot').screenshot({ animations: 'disabled' });
+  } finally {
+    await p.close();
+  }
+}
+
+/**
+ * Icon review sheet: each icon at 16/20/24/32 px on light and dark, plus in real context
+ * (secondary button, chip, table-row label) rendered by the reference renderer.
+ */
+export async function renderIcons(doc: RangoliDocument, refs: string[]): Promise<Buffer> {
+  const sets = doc.data.icons ?? {};
+  const rows: string[] = [];
+  const ctxDoc = cloneDocument(doc);
+  const ctxRoots: string[] = [];
+  // build in-context examples in a throwaway copy (never touches the real document)
+  for (const ref of refs) {
+    const found = findIcon(sets, ref);
+    if (!found) throw new Error(`Unknown icon "${ref}"`);
+    const full = `${found.set.name}/${found.icon.name}`;
+    const r = applyRdl(ctxDoc, `Ctx row gap4 p3 center fill:surface name:"ctx ${full}"\n  @Button variant=secondary size=sm "Action"\n    Icon icon:${full} w16 h16\n  @Chip variant=info "Status"\n    Icon icon:${full} w12 h12\n  Line row gap2 center\n    Icon icon:${full} w16 h16 color:text.secondary\n    Text body-sm "Row label"`);
+    ctxRoots.push(r.created[0]!);
+  }
+  const frag = renderFragment(ctxDoc, { roots: ctxRoots, editorAttrs: false });
+  const ctxHtml = frag.html.split('\n');
+  refs.forEach((ref, i) => {
+    const { set, icon } = findIcon(sets, ref)!;
+    const sizes = [16, 20, 24, 32].map((s) => `<span class="t">${iconSvg(set, icon, { size: s })}</span>`).join('');
+    rows.push(`<div class="row"><code>${set.name}/${icon.name}</code><div class="sizes">${sizes}</div><div class="sizes dark">${sizes}</div><div class="ctx">${ctxHtml[i] ?? ''}</div></div>`);
+  });
+  const css = renderCss(ctxDoc, frag.css, frag.usedComponents);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${css}
+body{margin:0;background:#fff}
+#sheet{display:inline-flex;flex-direction:column;padding:12px;gap:4px;font:12px ui-sans-serif,system-ui}
+.row{display:flex;align-items:center;gap:16px;border-bottom:1px solid #eef0f3;padding:6px 0}
+code{width:150px;color:#5b6470;font:12px ui-monospace,monospace}
+.sizes{display:flex;gap:12px;align-items:center;padding:8px 12px;border-radius:6px;background:#f6f7f9;color:#1c2026}
+.sizes.dark{background:#16191d;color:#e6e8eb}
+.t{display:inline-grid;place-items:center;width:34px;height:34px}
+.ctx{display:flex}</style></head><body><div id="sheet">${rows.join('')}</div></body></html>`;
+  const b = await browser();
+  const p = await b.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 1 });
+  try {
+    await p.setContent(html);
+    return await p.locator('#sheet').screenshot();
   } finally {
     await p.close();
   }

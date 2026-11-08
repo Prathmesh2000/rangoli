@@ -13,7 +13,7 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 | 2 | Motion as data (RDL `motion` blocks): states → CSS transitions, enter/exit → keyframes, springs → CSS `linear()`, automatic reduced-motion variants, motion lint (M01–M11), presets, `motion_curve` value tables for agents, editor Motion tab with replay | ✅ done |
 | 3 | Collaboration & review: agent "Apply directly / Ask first" mode, suggestions (change sets) with side-by-side / stacked compare + accept/reject, comment threads with @agent inbox, review pins with one-click fixes, named versions + diff, presence, LAN sharing with editor/reviewer/viewer invite links | ✅ done |
 | 4 | Prototype (`proto` blocks: navigate/overlay/close/back/swap/play; dissolve/slide/push/smart animate; delay & key triggers), timelines (`timeline` blocks → CSS + player), standalone HTML prototype + live `/play`, agents SEE via `render_png` + `motion_filmstrip`, one server per document (agents attach over `/mcp`) | ✅ done |
-| 5 | Icon Studio | |
+| 5 | Icon Studio: shape language on a 24 grid (line/polyline/polygon/rect/circle/dot/arc/path), 0.5 snapping, icon lint (grid, live area, stroke, tiny detail, complexity, optical size), 21-icon starter set, `Icon icon:clock` in designs (currentColor, leads button labels), drafts → Keep, `icon_render` sheet, SVG/React/sprite export | ✅ done |
 | 6 | Image Studio (compose/edit) | |
 | 7 | Figma bridge, framework adapters (React-MUI, Tailwind…) | |
 
@@ -67,7 +67,7 @@ Play it: `http://127.0.0.1:4400/play` (or **▶ Play** in the editor). Export: M
 
 ## MCP tools
 
-`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · proto_get · prototype_export · render_png · motion_filmstrip · rdl_help`
+`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · proto_get · prototype_export · render_png · motion_filmstrip · icon_list · icon_get · icon_render · icon_export · rdl_help`
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
 

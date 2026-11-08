@@ -11,6 +11,11 @@ import {
   formatDiff,
   formatLint,
   previewScript,
+  findIcon,
+  iconReact,
+  iconSprite,
+  iconSvg,
+  lintIcons,
   prototypeHtml,
   serializePrototype,
   generateCategorical,
@@ -32,7 +37,7 @@ import {
   type RNode,
 } from '@rangoli/engine';
 import { INSTRUCTIONS, RDL_HELP } from './guide.js';
-import { filmstrip, renderPng } from './shots.js';
+import { filmstrip, renderIcons, renderPng } from './shots.js';
 import type { Session } from './session.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
@@ -659,6 +664,74 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
         return fail(e);
       }
     },
+  );
+
+  // ---------------------------------------------------------------- icons
+  server.registerTool(
+    'icon_list',
+    { description: 'List icon sets and icon names (with set conventions: grid, stroke, caps).', inputSchema: { set: z.string().optional() } },
+    safe(({ set }) => {
+      const sets = Object.values(doc.data.icons ?? {}).filter((s) => !set || s.name === set);
+      return text(sets.map((s) => `${s.name} (grid${s.grid} stroke${s.stroke} ${s.cap}): ${Object.keys(s.icons).join(' ')}`).join('\n') || 'No icon sets.');
+    }),
+  );
+
+  server.registerTool(
+    'icon_get',
+    { description: 'Shape-language source of icons (to edit or base variants on).', inputSchema: { names: z.array(z.string()).describe('"clock" or "ui/clock"') } },
+    safe(({ names }) =>
+      text(
+        names
+          .map((n) => {
+            const f = findIcon(doc.data.icons, n);
+            if (!f) return `${n}: not found`;
+            return `icon ${f.set.name}/${f.icon.name}${f.icon.stroke ? ` stroke${f.icon.stroke}` : ''}\n${f.icon.src.split('\n').map((l) => '  ' + l).join('\n')}`;
+          })
+          .join('\n'),
+      ),
+    ),
+  );
+
+  server.registerTool(
+    'icon_render',
+    {
+      description: 'LOOK at icons: PNG with each icon at 16/20/24/32 px on light and dark, and in context (button, chip, table row). Create variants as drafts/<name>~1..4, render them together, then let the human keep one.',
+      inputSchema: { names: z.array(z.string()).min(1).max(16) },
+    },
+    async ({ names }) => {
+      try {
+        const png = await renderIcons(doc, names);
+        const issues = lintIcons(doc.data.icons, names.map((n) => { const f = findIcon(doc.data.icons, n); return f ? `${f.set.name}/${f.icon.name}` : n; }));
+        return image(png, issues.length ? `Icon lint:\n${issues.map((i) => `[${i.severity}] ${i.code} ${i.icon} ${i.message}`).join('\n')}` : 'Icon lint: clean.');
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'icon_export',
+    {
+      description: 'Export an icon set: "svg" (one file per icon), "react" (one .tsx component per icon + index.ts), or "sprite" (single SVG with <symbol>s). Writes into outDir.',
+      inputSchema: { set: z.string(), format: z.enum(['svg', 'react', 'sprite']), outDir: z.string().describe('absolute directory path') },
+    },
+    safe(async ({ set, format, outDir }) => {
+      const s = doc.data.icons?.[set];
+      if (!s) throw new Error(`No icon set "${set}"`);
+      await mkdir(outDir, { recursive: true });
+      const icons = Object.values(s.icons);
+      if (format === 'sprite') {
+        await writeFile(join(outDir, `${set}-sprite.svg`), iconSprite(s));
+        return text(`Wrote ${icons.length} symbols → ${join(outDir, `${set}-sprite.svg`)}`);
+      }
+      const pascal = (n: string) => n.replace(/(^|[-_~\s]+)(\w)/g, (_, __, c: string) => c.toUpperCase());
+      for (const ic of icons) {
+        if (format === 'svg') await writeFile(join(outDir, `${ic.name}.svg`), iconSvg(s, ic) + '\n');
+        else await writeFile(join(outDir, `${pascal(ic.name)}Icon.tsx`), iconReact(s, ic));
+      }
+      if (format === 'react') await writeFile(join(outDir, 'index.ts'), icons.map((ic) => `export { ${pascal(ic.name)}Icon } from './${pascal(ic.name)}Icon';`).join('\n') + '\n');
+      return text(`Wrote ${icons.length} ${format === 'svg' ? 'SVG files' : 'React components + index.ts'} → ${outDir}`);
+    }),
   );
 
   server.registerTool(

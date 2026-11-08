@@ -7,6 +7,7 @@ import type { RangoliDocument } from './document.js';
 import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style } from './model.js';
 import { cssVarName, TokenResolver, tokensToCss } from './tokens.js';
 import { motionCss } from './motion.js';
+import { compileIcon, findIcon } from './icons.js';
 
 export interface RenderOptions {
   page?: string;
@@ -94,6 +95,18 @@ class Renderer {
       inner = esc(n.text ?? '');
       decls.push('white-space:pre-wrap');
       if (inInline) decls.push('display:block');
+    } else if (n.type === 'vector' && n.icon) {
+      const found = findIcon(this.doc.data.icons, n.icon);
+      tag = 'svg';
+      const grid = found?.set.grid ?? 24;
+      attrs.push(`viewBox="0 0 ${grid} ${grid}"`, 'aria-hidden="true"', 'xmlns="http://www.w3.org/2000/svg"', 'fill="none"', 'stroke="currentColor"');
+      if (found) {
+        attrs.push(`stroke-width="${found.icon.stroke ?? found.set.stroke}"`, `stroke-linecap="${found.set.cap}"`, `stroke-linejoin="${found.set.join}"`);
+        inner = compileIcon(found.icon.src).shapes.map((s) => (s.fill ? `<path d="${s.d}" fill="currentColor" stroke="none"/>` : `<path d="${s.d}"/>`)).join('');
+      }
+      if (!size?.w) decls.push('width:20px');
+      if (!size?.h) decls.push('height:20px');
+      decls.push('flex-shrink:0');
     } else if (n.type === 'vector' && n.vector) {
       const v = n.vector;
       tag = 'svg';
@@ -112,10 +125,13 @@ class Renderer {
     }
 
     const childInline = inInline || tag === 'button' || tag === 'span' || tag === 'a';
+    let kids = '';
     for (const cid of n.children ?? []) {
       const c = this.doc.page(this.opts.page).nodes[cid];
-      if (c) inner += this.node(c, n.type === 'text' ? undefined : layout, childInline);
+      if (c) kids += this.node(c, n.type === 'text' ? undefined : layout, childInline);
     }
+    // component children (e.g. an icon inside a button) lead the label
+    inner = n.type === 'instance' ? kids + inner : inner + kids;
 
     if (decls.length) this.rules.push(`.r-${n.id}{${decls.join(';')}}`);
     if (tag === 'img' || tag === 'input') return `<${tag} ${attrs.join(' ')}>`;

@@ -9,6 +9,7 @@ import { RangoliDocument } from './document.js';
 import type { ComponentDef, DocumentData, Manifest, Page, TokenTree } from './model.js';
 import { defaultMotion, type MotionDef } from './motion.js';
 import type { PrototypeData, Timeline } from './prototype.js';
+import { defaultIcons, type IconSet } from './icons.js';
 
 const json = (v: unknown) => JSON.stringify(v, null, 2) + '\n';
 
@@ -20,6 +21,7 @@ export async function saveDocument(doc: RangoliDocument, dir: string): Promise<v
   await writeFile(join(dir, 'tokens.json'), json(d.tokens));
   await writeFile(join(dir, 'components.json'), json(d.components));
   await writeFile(join(dir, 'motion.json'), json(d.motion ?? {}));
+  await writeFile(join(dir, 'icons.json'), json(d.icons ?? {}));
   await writeFile(join(dir, 'prototype.json'), json({ ...(d.prototype ?? { interactions: {} }), timelines: d.timelines ?? {} }));
   const keep = new Set<string>();
   for (const page of Object.values(d.pages)) {
@@ -45,6 +47,8 @@ export async function loadDocument(dir: string): Promise<RangoliDocument> {
   const motion = existsSync(join(dir, 'motion.json')) ? await read<Record<string, MotionDef>>('motion.json', {}) : defaultMotion();
   const proto = await read<PrototypeData & { timelines?: Record<string, Timeline> }>('prototype.json', { interactions: {} });
   const { timelines, ...prototype } = proto;
-  const data: DocumentData = { manifest, tokens, components, pages, motion, prototype: { ...prototype, interactions: prototype.interactions ?? {} }, timelines: timelines ?? {} };
+  // documents created before icons existed get the starter set
+  const icons = existsSync(join(dir, 'icons.json')) ? await read<Record<string, IconSet>>('icons.json', {}) : defaultIcons();
+  const data: DocumentData = { manifest, tokens, components, pages, motion, prototype: { ...prototype, interactions: prototype.interactions ?? {} }, timelines: timelines ?? {}, icons };
   return new RangoliDocument(data);
 }

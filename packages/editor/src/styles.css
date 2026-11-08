@@ -244,6 +244,34 @@ code { font-family: var(--mono); font-size: 11px; background: var(--panel-2); pa
 .start-badge { position: absolute; z-index: 4; transform: translateX(-100%); font-size: 11px; font-weight: 600; line-height: 20px; padding: 0 8px; border-radius: 4px; background: var(--ok); color: #fff; pointer-events: none; white-space: nowrap; }
 .inspector .tabs .tab { padding: 8px 6px; }
 
+/* ---------- icon studio ---------- */
+.studio { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: 280px 1fr 320px; min-height: 0; }
+.studio-left, .studio-right { background: var(--panel); overflow: auto; min-height: 0; }
+.studio-left { border-right: 1px solid var(--line); }
+.studio-right { border-left: 1px solid var(--line); }
+.studio-center { overflow: auto; background: var(--canvas); display: grid; place-items: start center; padding: 32px 24px; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px; }
+.icon-tile { display: grid; place-items: center; height: 44px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text); cursor: pointer; padding: 0; }
+.icon-tile:hover { background: var(--panel-2); }
+.icon-tile.is-sel, .draft.is-sel .icon-tile { border-color: var(--accent); background: var(--accent-soft); }
+.icon-new { color: var(--text-3); font-size: 18px; border: 1px dashed var(--line-strong); }
+.draft-group { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
+.draft-name { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.draft { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.icon-preview { display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.icon-board { background: var(--panel); border-radius: 8px; box-shadow: 0 0 0 1px var(--line); color: var(--text); }
+.grid-minor line { stroke: var(--line); stroke-width: .5; }
+.grid-major line { stroke: var(--line-strong); stroke-width: .75; }
+.keyline circle, .keyline rect { fill: none; stroke: #d6336c; stroke-opacity: .28; stroke-width: 1; }
+.live-area { fill: none; stroke: var(--accent); stroke-dasharray: 4 4; stroke-opacity: .55; }
+.vertices circle { fill: var(--accent); }
+.icon-sizes { display: flex; gap: 6px; align-items: center; }
+.icon-size { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 6px; background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+.icon-size.is-dark { background: #16191d; color: #e6e8eb; box-shadow: none; }
+.icon-sizes-sep { width: 12px; }
+.icon-ctx { min-height: 60px; }
+.lint-row { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; padding: 4px 0; font-size: 12px; }
+
 /* ---------- tokens ---------- */
 .brand-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .brand-row input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: none; cursor: pointer; flex: none; }

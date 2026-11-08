@@ -211,6 +211,24 @@ Runs col gap6 p6 w960 fill:canvas
     expect(tlFilm.content[0]!.type).toBe('image');
   }, 60000);
 
+  it('icons: list, draft variants, render sheet with lint, use in design, export', async () => {
+    expect((await call('icon_list')).text).toMatch(/^ui \(grid24 stroke1\.5 round\): search plus close/);
+    const got = await call('icon_get', { names: ['clock'] });
+    expect(got.text).toBe('icon ui/clock\n  circle 12 12 8.5\n  polyline 12 7.5 12 12 15 14');
+    const drafts = await call('rdl_apply', { script: 'icon drafts/run~1\n  path M8 5.5 L18.5 12 L8 18.5 Z\nicon drafts/run~2 stroke2\n  path M7 4 L20 12 L7 20 Z' });
+    expect(drafts.isError).toBe(false);
+    const sheet = (await client.callTool({ name: 'icon_render', arguments: { names: ['drafts/run~1', 'drafts/run~2'] } })) as { content: { type: string; text?: string }[] };
+    expect(sheet.content[0]!.type).toBe('image');
+    expect(sheet.content[1]!.text).toContain('I03 drafts/run~2 stroke 2 differs'); // lint travels with the picture
+    const use = await call('rdl_apply', { script: 'insert #na start\n  Icon icon:retry w16 h16' });
+    expect(use.text).toMatch(/created: #\w+/);
+    expect(use.text).not.toContain('D16'); // icon reference resolves
+    const outDir = join(dir, 'icons-react');
+    expect((await call('icon_export', { set: 'ui', format: 'react', outDir })).text).toContain('React components + index.ts');
+    expect(await readFile(join(outDir, 'ClockIcon.tsx'), 'utf8')).toContain('export function ClockIcon(');
+    expect(await readFile(join(outDir, 'index.ts'), 'utf8')).toContain("export { RetryIcon } from './RetryIcon';");
+  }, 60000);
+
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));
     const page = JSON.parse(await readFile(join(dir, 'app.rangoli', 'pages', 'p1.json'), 'utf8')) as { nodes: Record<string, unknown> };

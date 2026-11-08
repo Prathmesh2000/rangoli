@@ -9,6 +9,7 @@ import { isTokenRef, type Len, type Paint, type RNode, type Style } from './mode
 import { TokenResolver } from './tokens.js';
 import { lintMotion } from './motion.js';
 import { timelineDuration } from './prototype.js';
+import { findIcon, lintIcons } from './icons.js';
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -228,6 +229,15 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     const motionNode = m.target.startsWith('#') ? m.target.slice(1).replace(/\[.*$/, '') : m.target;
     if (m.target.startsWith('#') && !page.nodes[motionNode]) continue;
     add({ code: m.code, severity: m.severity, node: motionNode, message: `motion ${m.target} ${m.message}` });
+  }
+
+  // icon references + icon-set consistency (I*)
+  for (const { node: n } of doc.walk(roots, page.id)) {
+    if (n.icon && !findIcon(doc.data.icons, n.icon)) add({ code: 'D16', severity: 'P0', node: n.id, message: `references missing icon "${n.icon}"` });
+  }
+  if (!opts.roots) {
+    // only sets actually in use, plus drafts, are worth reporting
+    for (const i of lintIcons(doc.data.icons)) add({ code: i.code, severity: i.severity, node: `icon:${i.icon}`, message: `${i.icon} ${i.message}` });
   }
 
   // prototype rules (P*) — whole-page lint only

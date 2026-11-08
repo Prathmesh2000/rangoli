@@ -51,6 +51,11 @@ export interface EditorState {
   rightTab: RightTab;
   focusThread: string | null;
   myName: string;
+  view: 'design' | 'icons';
+  /** selected icon "set/name" in Icon Studio */
+  iconSel: string | null;
+  /** unsaved shape source being typed (live preview) */
+  iconDraft: string | null;
 }
 
 let state: EditorState = {
@@ -76,7 +81,15 @@ let state: EditorState = {
   rightTab: 'inspect',
   focusThread: null,
   myName: localStorageGet('rangoli.name') ?? '',
+  view: localStorageGet('rangoli.view') === 'icons' ? 'icons' : 'design',
+  iconSel: null,
+  iconDraft: null,
 };
+
+export function setView(view: 'design' | 'icons'): void {
+  localStorageSet('rangoli.view', view);
+  setState({ view });
+}
 
 const clientId = Math.random().toString(36).slice(2, 10);
 export const myClientId = clientId;

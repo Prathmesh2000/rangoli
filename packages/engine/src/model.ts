@@ -118,6 +118,8 @@ export interface RNode {
   style?: Style;
   text?: string;
   vector?: VectorData;
+  /** icon reference "set/name" (vector nodes) */
+  icon?: string;
   image?: ImageRef;
   /** For instances: component id */
   component?: string;
@@ -170,8 +172,11 @@ export interface DocumentData {
   prototype?: PrototypeData;
   /** multi-step animations, keyed by name */
   timelines?: Record<string, Timeline>;
+  /** icon sets (shape-language source), keyed by set name */
+  icons?: Record<string, IconSet>;
 }
 
+import type { IconSet } from './icons.js';
 import type { MotionDef } from './motion.js';
 import type { PrototypeData, Timeline } from './prototype.js';
 
