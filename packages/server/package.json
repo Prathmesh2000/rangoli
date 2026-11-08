@@ -1,0 +1,23 @@
+{
+  "name": "@rangoli/server",
+  "version": "0.1.0",
+  "description": "Rangoli CLI, MCP server for AI agents, and local preview server",
+  "type": "module",
+  "bin": {
+    "rangoli": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@rangoli/engine": "0.1.0",
+    "zod": "^4.6.7"
+  },
+  "license": "MIT"
+}
