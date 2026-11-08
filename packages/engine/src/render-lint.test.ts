@@ -101,9 +101,13 @@ describe('file format', () => {
     try {
       const doc = createDocument('Test');
       applyRdl(doc, CARD);
+      delete doc.data.icons!.ui!.icons.settings; // simulate a document saved before this icon existed
       await saveDocument(doc, join(dir, 'test.rangoli'));
       const loaded = await loadDocument(join(dir, 'test.rangoli'));
       expect(serializeRdl(loaded)).toBe(serializeRdl(doc));
+      // older documents gain newly added starter icons and library components on load
+      expect(loaded.data.icons!.ui!.icons.settings).toBeDefined();
+      expect(loaded.data.components.Pagination).toBeDefined();
       // ids continue after load
       applyRdl(loaded, 'Text "new"');
       expect(loaded.page().children.at(-1)).toBe('n7');

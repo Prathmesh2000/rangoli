@@ -50,8 +50,11 @@ export async function loadDocument(dir: string): Promise<RangoliDocument> {
   const motion = existsSync(join(dir, 'motion.json')) ? await read<Record<string, MotionDef>>('motion.json', {}) : defaultMotion();
   const proto = await read<PrototypeData & { timelines?: Record<string, Timeline> }>('prototype.json', { interactions: {} });
   const { timelines, ...prototype } = proto;
-  // documents created before icons existed get the starter set
+  // documents created before icons existed get the starter set; existing "ui" sets gain newly added
+  // starter icons (never overwriting icons the user edited)
   const icons = existsSync(join(dir, 'icons.json')) ? await read<Record<string, IconSet>>('icons.json', {}) : defaultIcons();
+  const starter = defaultIcons().ui!;
+  if (icons.ui) for (const [name, ic] of Object.entries(starter.icons)) icons.ui.icons[name] ??= ic;
   const data: DocumentData = { manifest, tokens, components, pages, motion, prototype: { ...prototype, interactions: prototype.interactions ?? {} }, timelines: timelines ?? {}, icons, assets: await read<Record<string, AssetMeta>>('assets.json', {}) };
   return new RangoliDocument(data);
 }
