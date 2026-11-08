@@ -64,5 +64,23 @@ const afterUndo = await page.locator('[data-rid="n4"]').textContent();
 const chipAfterUndo = await page.locator('[data-rid]', { hasText: '3 failed' }).last().getAttribute('data-variant');
 const zoom = await page.locator('.zoom-val').textContent();
 
-console.log(JSON.stringify({ selectedLabel, chipVariant, liveTitle, afterUndo, chipAfterUndo, zoom, errors }, null, 2));
+// --- motion tab: apply "modal" preset to the table, play enter mid-animation, check hover transition on a button
+await page.locator('.layer', { hasText: 'Table' }).first().click();
+await page.getByRole('tab', { name: 'Motion' }).click();
+await page.locator('.chip-btn', { hasText: 'modal' }).click();
+await page.waitForTimeout(400);
+await page.screenshot({ path: join(out, '6-motion-tab.png') });
+await page.getByRole('button', { name: '▶ Enter' }).click();
+await page.waitForTimeout(60);
+const midOpacity = await page.locator('[data-rid="nd"]').first().evaluate((el) => getComputedStyle(el).opacity).catch(() => 'n/a');
+await page.waitForTimeout(400);
+const endOpacity = await page.locator('[data-rid="nd"]').first().evaluate((el) => getComputedStyle(el).opacity).catch(() => 'n/a');
+const btn = page.locator('button[data-rid]', { hasText: 'New run' });
+const bgBefore = await btn.evaluate((el) => getComputedStyle(el).backgroundColor);
+await btn.hover();
+await page.waitForTimeout(250);
+const bgHover = await btn.evaluate((el) => getComputedStyle(el).backgroundColor);
+const motionLint = await (await fetch(base + 'api/lint')).json();
+
+console.log(JSON.stringify({ selectedLabel, chipVariant, liveTitle, afterUndo, chipAfterUndo, zoom, midOpacity, endOpacity, bgBefore, bgHover, motionIssues: motionLint.filter((i) => i.code.startsWith('M')).length, errors }, null, 2));
 await browser.close();

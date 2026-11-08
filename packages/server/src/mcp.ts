@@ -12,7 +12,13 @@ import {
   generateNeutralRamp,
   generateRamp,
   lint,
+  MOTION_PRESETS,
+  motionCss,
+  parseMotionLines,
   renderDocument,
+  sampleMotion,
+  serializeMotion,
+  type MotionSpec,
   serializeRdl,
   TokenResolver,
   tokensToCss,
@@ -167,8 +173,12 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
     },
     safe(({ script, parent, page, label }) => {
       const res = applyRdl(doc, script, { parent, page, author, label });
-      const roots = rootsOf(res.touched.filter((t) => !t.startsWith('$')), page);
+      // map touched entries to nodes: plain ids, and motion on "#id" targets
+      const nodeIds = res.touched.flatMap((t) => (!t.startsWith('$') ? [t] : t.startsWith('$motion:#') ? [t.slice(9).replace(/\[.*$/, '')] : []));
+      const componentMotion = res.touched.some((t) => t.startsWith('$motion:@'));
+      const roots = rootsOf(nodeIds.filter((id) => doc.findNode(id)), page);
       const issues = roots.length ? lint(doc, { page, roots }) : [];
+      if (componentMotion) for (const i of lint(doc, { page })) if (i.code.startsWith('M') && !issues.some((x) => x.code === i.code && x.node === i.node)) issues.push(i);
       const important = issues.filter((i) => i.severity === 'P0' || i.severity === 'P1' || i.severity === 'P2');
       return text(
         [
@@ -360,14 +370,72 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
   server.registerTool(
     'export',
     {
-      description: 'Export: "html" (standalone page), "css-tokens" (CSS variables, light+dark), "tokens-json" (W3C DTCG). Writes to outFile.',
-      inputSchema: { format: z.enum(['html', 'css-tokens', 'tokens-json']), outFile: z.string().describe('absolute path'), roots: z.array(z.string()).optional(), mode: z.enum(['light', 'dark']).optional() },
+      description: 'Export: "html" (standalone page), "css-tokens" (CSS variables, light+dark), "css-motion" (transitions/keyframes + reduced motion), "tokens-json" (W3C DTCG). Writes to outFile.',
+      inputSchema: { format: z.enum(['html', 'css-tokens', 'css-motion', 'tokens-json']), outFile: z.string().describe('absolute path'), roots: z.array(z.string()).optional(), mode: z.enum(['light', 'dark']).optional() },
     },
     safe(async ({ format, outFile, roots, mode }) => {
       const content =
-        format === 'html' ? renderDocument(doc, { roots, mode }) : format === 'css-tokens' ? tokensToCss(doc.data.tokens) : JSON.stringify(doc.data.tokens, null, 2) + '\n';
+        format === 'html'
+          ? renderDocument(doc, { roots, mode })
+          : format === 'css-tokens'
+            ? tokensToCss(doc.data.tokens)
+            : format === 'css-motion'
+              ? motionCss(doc.data.motion, doc.data.tokens) + '\n'
+              : JSON.stringify(doc.data.tokens, null, 2) + '\n';
       await writeFile(outFile, content);
       return text(`Wrote ${format} (${content.length} bytes) → ${outFile}`);
+    }),
+  );
+
+  // ---------------------------------------------------------------- motion
+  server.registerTool(
+    'motion_get',
+    { description: 'Read motion definitions as RDL (all, or for targets like "@Button", "#n7").', inputSchema: { targets: z.array(z.string()).optional() } },
+    safe(({ targets }) => text(serializeMotion(doc.data.motion, targets) || 'No motion defined.')),
+  );
+
+  server.registerTool(
+    'motion_curve',
+    {
+      description: 'See an animation as numbers: per-property value tables over time (you cannot watch video — use this to check feel). Optionally pass draft RDL lines instead of an existing target.',
+      inputSchema: { target: z.string().optional().describe('"@Button[variant=primary]" or "#n7"'), trigger: z.enum(['hover', 'press', 'focus', 'disabled', 'selected', 'enter', 'exit']).optional(), draft: z.string().optional().describe('e.g. "enter opacity:0, y:md base out"'), steps: z.number().int().min(3).max(21).optional() },
+    },
+    safe(({ target, trigger, draft, steps }) => {
+      let specs: MotionSpec[];
+      if (draft) {
+        const diag: { line: number; severity: 'error' | 'warning'; message: string }[] = [];
+        specs = parseMotionLines(draft.split('\n').map((l, i) => ({ no: i + 1, toks: l.trim().split(/\s+/) })), diag);
+        if (diag.length) throw new Error(diag.map((d) => d.message).join('\n'));
+      } else {
+        const def = target ? doc.data.motion?.[target] : undefined;
+        if (!def) throw new Error(`No motion for ${target}. Known: ${Object.keys(doc.data.motion ?? {}).join(', ')}`);
+        specs = def.specs;
+      }
+      const out = specs.filter((s) => !trigger || s.trigger === trigger).map((s) => {
+        const r = sampleMotion(s, doc.data.tokens, steps ?? 6);
+        return `${s.trigger} (${r.ms}ms, ${s.easing})\n  ${r.lines.join('\n  ')}`;
+      });
+      return text(out.join('\n') || 'Nothing to sample.');
+    }),
+  );
+
+  server.registerTool(
+    'motion_presets',
+    { description: 'List motion presets (press, popover, modal, toast, listItem, fade, statusChange, drawer) with their RDL.', inputSchema: {} },
+    safe(() => text(Object.entries(MOTION_PRESETS).map(([k, p]) => `${k} — ${p.description}\n  ${p.rdl.replace(/\n/g, '\n  ')}`).join('\n'))),
+  );
+
+  server.registerTool(
+    'motion_preset',
+    {
+      description: 'Apply a motion preset to a target ("@Comp", "@Comp variant=x", or "#id"). Undoable; returns motion lint.',
+      inputSchema: { target: z.string(), preset: z.enum(Object.keys(MOTION_PRESETS) as [string, ...string[]]) },
+    },
+    safe(({ target, preset }) => {
+      const p = MOTION_PRESETS[preset]!;
+      applyRdl(doc, `motion ${target}\n${p.rdl.split('\n').map((l) => '  ' + l).join('\n')}`, { author, label: `motion ${preset} → ${target}` });
+      const issues = lint(doc).filter((i) => i.code.startsWith('M'));
+      return text(`Applied ${preset} to ${target}.\n${issues.length ? formatLint(issues) : 'Motion lint: clean.'}`);
     }),
   );
 

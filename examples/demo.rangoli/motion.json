@@ -1,0 +1,170 @@
+{
+  "@Button": {
+    "target": "@Button",
+    "specs": [
+      {
+        "trigger": "press",
+        "tracks": [
+          {
+            "prop": "scale",
+            "to": "press"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      },
+      {
+        "trigger": "focus",
+        "tracks": [
+          {
+            "prop": "ring",
+            "to": "focus"
+          }
+        ],
+        "duration": "instant",
+        "easing": "out"
+      },
+      {
+        "trigger": "disabled",
+        "tracks": [
+          {
+            "prop": "opacity",
+            "to": "0.5"
+          }
+        ],
+        "duration": "instant",
+        "easing": "out"
+      }
+    ]
+  },
+  "@Button[variant=primary]": {
+    "target": "@Button[variant=primary]",
+    "specs": [
+      {
+        "trigger": "hover",
+        "tracks": [
+          {
+            "prop": "fill",
+            "to": "action.primaryHover"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      }
+    ]
+  },
+  "@Button[variant=secondary]": {
+    "target": "@Button[variant=secondary]",
+    "specs": [
+      {
+        "trigger": "hover",
+        "tracks": [
+          {
+            "prop": "fill",
+            "to": "action.secondaryHover"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      }
+    ]
+  },
+  "@Button[variant=ghost]": {
+    "target": "@Button[variant=ghost]",
+    "specs": [
+      {
+        "trigger": "hover",
+        "tracks": [
+          {
+            "prop": "fill",
+            "to": "action.secondaryHover"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      }
+    ]
+  },
+  "@Button[variant=danger]": {
+    "target": "@Button[variant=danger]",
+    "specs": [
+      {
+        "trigger": "hover",
+        "tracks": [
+          {
+            "prop": "fill",
+            "to": "action.dangerHover"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      }
+    ]
+  },
+  "@Input": {
+    "target": "@Input",
+    "specs": [
+      {
+        "trigger": "hover",
+        "tracks": [
+          {
+            "prop": "stroke",
+            "to": "text.secondary"
+          }
+        ],
+        "duration": "fast",
+        "easing": "out"
+      },
+      {
+        "trigger": "focus",
+        "tracks": [
+          {
+            "prop": "ring",
+            "to": "focus"
+          }
+        ],
+        "duration": "instant",
+        "easing": "out"
+      }
+    ]
+  },
+  "#nd": {
+    "target": "#nd",
+    "specs": [
+      {
+        "trigger": "enter",
+        "tracks": [
+          {
+            "prop": "opacity",
+            "from": "0"
+          },
+          {
+            "prop": "scale",
+            "from": "popIn"
+          },
+          {
+            "prop": "y",
+            "from": "md"
+          }
+        ],
+        "duration": "base",
+        "easing": "out"
+      },
+      {
+        "trigger": "exit",
+        "tracks": [
+          {
+            "prop": "opacity",
+            "to": "0"
+          },
+          {
+            "prop": "scale",
+            "to": "popIn"
+          }
+        ],
+        "duration": "fast",
+        "easing": "in"
+      }
+    ]
+  }
+}

@@ -12,6 +12,7 @@
 import { RangoliDocument, RangoliError, type Op } from './document.js';
 import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
 import { TokenResolver } from './tokens.js';
+import { parseMotionLines, targetKey } from './motion.js';
 
 export interface Diagnostic {
   line: number;
@@ -86,12 +87,14 @@ export type Command =
   | { kind: 'insert'; line: number; target: string; where: Where; nodes: PNode[] }
   | { kind: 'move'; line: number; id: string; where: Where }
   | { kind: 'delete'; line: number; id: string }
-  | { kind: 'replace'; line: number; id: string; nodes: PNode[] };
+  | { kind: 'replace'; line: number; id: string; nodes: PNode[] }
+  | { kind: 'motion'; line: number; base: string; filters: Record<string, string>; clear: boolean; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
 
 const COMMANDS = new Set(['set', 'insert', 'move', 'delete', 'replace']);
-const isCommandLine = (ln: Line) => COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#');
+const isCommandLine = (ln: Line) =>
+  (COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#')) || (ln.toks[0] === 'motion' && /^[@#]/.test(ln.toks[1] ?? ''));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
   const lines = lex(src);
@@ -117,6 +120,24 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
   while (i < lines.length) {
     const ln = lines[i]!;
     const kw = ln.toks[0]!;
+    if (kw === 'motion' && /^[@#]/.test(ln.toks[1] ?? '')) {
+      i++;
+      const filters: Record<string, string> = {};
+      let clear = false;
+      for (const t of ln.toks.slice(2)) {
+        const m = /^([\w-]+)=(.+)$/.exec(t);
+        if (m) filters[m[1]!] = m[2]!;
+        else if (t === 'none') clear = true;
+        else errors.push({ line: ln.no, severity: 'error', message: `Unexpected "${t}" in motion header (use: motion @Comp [axis=value] | motion #id | … none)` });
+      }
+      const body: { no: number; toks: string[] }[] = [];
+      while (i < lines.length && lines[i]!.indent > ln.indent) {
+        body.push({ no: lines[i]!.no, toks: lines[i]!.toks });
+        i++;
+      }
+      commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
     if (COMMANDS.has(kw) && ln.toks[1]?.startsWith('#')) {
       i++;
       const id = ln.toks[1].slice(1);
@@ -415,7 +436,15 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
       }
       case 'delete':
         if (!page.nodes[cmd.id]) errors.push({ line: cmd.line, severity: 'error', message: `#${cmd.id} not found` });
-        else ops.push({ op: 'delete', page: page.id, id: cmd.id });
+        else {
+          // drop motion attached to the deleted subtree (keeps the document free of orphans)
+          const drop = (id: string) => {
+            for (const key of Object.keys(doc.data.motion ?? {})) if (key === `#${id}` || key.startsWith(`#${id}[`)) ops.push({ op: 'setMotion', target: key, def: null });
+            for (const c of page.nodes[id]?.children ?? []) drop(c);
+          };
+          drop(cmd.id);
+          ops.push({ op: 'delete', page: page.id, id: cmd.id });
+        }
         break;
       case 'insert': {
         const target = page.nodes[cmd.target];
@@ -448,6 +477,28 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         };
         hide(cmd.id);
         try { emitTree(cmd.nodes, target.parent, index); } finally { for (const [id, n] of hidden) page.nodes[id] = n; }
+        break;
+      }
+      case 'motion': {
+        const key = targetKey(cmd.base, cmd.filters);
+        if (cmd.base.startsWith('@')) {
+          const comp = doc.data.components[cmd.base.slice(1)];
+          if (!comp) { errors.push({ line: cmd.line, severity: 'error', message: `Unknown component "${cmd.base}"` }); break; }
+          for (const [k, v] of Object.entries(cmd.filters)) {
+            if (!comp.axes[k]?.includes(v)) errors.push({ line: cmd.line, severity: 'error', message: `${comp.name} has no ${k}=${v} (axes: ${Object.entries(comp.axes).map(([a, vs]) => `${a}: ${vs.join('|')}`).join('; ')})` });
+          }
+        } else if (!exists(cmd.base.slice(1))) {
+          errors.push({ line: cmd.line, severity: 'error', message: `${cmd.base} not found` });
+          break;
+        }
+        if (cmd.clear) { ops.push({ op: 'setMotion', target: key, def: null }); break; }
+        if (!cmd.lines.length) { errors.push({ line: cmd.line, severity: 'error', message: 'motion block is empty — add indented lines like "  hover fill:action.primaryHover fast out", or use "none" to remove' }); break; }
+        const specs = parseMotionLines(cmd.lines, errors);
+        // merge: triggers given here replace the same triggers on the target; others are kept
+        const prev = doc.data.motion?.[key];
+        const given = new Set(specs.map((s) => s.trigger));
+        const merged = [...(prev?.specs.filter((s) => !given.has(s.trigger)) ?? []), ...specs];
+        ops.push({ op: 'setMotion', target: key, def: { target: key, specs: merged } });
         break;
       }
       case 'move': {

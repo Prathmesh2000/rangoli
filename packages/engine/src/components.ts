@@ -1,6 +1,7 @@
 import type { ComponentDef, RNode, Style, Layout, Sizing } from './model.js';
 import { RangoliDocument } from './document.js';
 import { defaultTokens, type DefaultTokenOptions } from './tokens.js';
+import { defaultMotion } from './motion.js';
 
 const t = (token: string) => ({ token });
 
@@ -89,5 +90,6 @@ export function createDocument(name = 'Untitled', tokenOpts: DefaultTokenOptions
   const doc = RangoliDocument.empty(name);
   doc.data.tokens = defaultTokens(tokenOpts);
   doc.data.components = defaultComponents();
+  doc.data.motion = defaultMotion();
   return doc;
 }

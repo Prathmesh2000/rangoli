@@ -6,6 +6,7 @@ import { resolveInstance } from './components.js';
 import type { RangoliDocument } from './document.js';
 import { isTokenRef, type Dim, type Layout, type Len, type Paint, type RNode, type Sizing, type Style } from './model.js';
 import { cssVarName, TokenResolver, tokensToCss } from './tokens.js';
+import { motionCss } from './motion.js';
 
 export interface RenderOptions {
   page?: string;
@@ -216,36 +217,20 @@ class Renderer {
   }
 }
 
-/** Interaction-state CSS for built-in components (hover/focus/active/disabled). */
-function componentStateCss(used: Set<string>): string {
+/** Static (non-motion) CSS for built-in components. Interaction motion comes from doc.data.motion. */
+function componentBaseCss(used: Set<string>): string {
   const out: string[] = [];
-  if (used.has('Button')) {
-    out.push(
-      '.rc-Button{cursor:pointer;border:0;white-space:nowrap;transition:background-color var(--motion-duration-fast) cubic-bezier(.2,0,0,1),transform var(--motion-duration-fast) cubic-bezier(.2,0,0,1)}',
-      '.rc-Button[data-variant="primary"]:hover{background:var(--color-action-primaryHover)}',
-      '.rc-Button[data-variant="secondary"]:hover,.rc-Button[data-variant="ghost"]:hover{background:var(--color-action-secondaryHover)}',
-      '.rc-Button:active{transform:scale(var(--motion-scale-press))}',
-      '.rc-Button:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:2px}',
-      '.rc-Button:disabled{opacity:.5;cursor:not-allowed}',
-    );
-  }
-  if (used.has('Input')) {
-    out.push(
-      '.rc-Input{border:0;outline:0}',
-      '.rc-Input::placeholder{color:var(--color-text-disabled)}',
-      '.rc-Input:focus-visible{box-shadow:inset 0 0 0 2px var(--color-border-focus)}',
-      '.rc-Input:disabled{cursor:not-allowed}',
-    );
-  }
+  if (used.has('Button')) out.push('.rc-Button{cursor:pointer;border:0;white-space:nowrap}', '.rc-Button:disabled{cursor:not-allowed}');
+  if (used.has('Input')) out.push('.rc-Input{border:0;outline:0}', '.rc-Input::placeholder{color:var(--color-text-disabled)}', '.rc-Input:disabled{cursor:not-allowed}');
   return out.join('\n');
 }
 
+// Reduced motion is handled per animation by motionCss (fades kept, movement removed) — no global kill switch.
 const BASE_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--color-bg-canvas);color:var(--color-text-primary);font:var(--textStyle-body);-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}
-h1,h2,h3,h4,p{overflow-wrap:break-word}
-@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition-duration:0.01ms!important;animation-duration:0.01ms!important;animation-iteration-count:1!important}}`;
+h1,h2,h3,h4,p{overflow-wrap:break-word}`;
 
 /** Render nodes to an HTML fragment + node CSS (no tokens/base). */
 export function renderFragment(doc: RangoliDocument, opts: RenderOptions = {}): RenderResult & { usedComponents: string[] } {
@@ -261,7 +246,7 @@ export function renderFragment(doc: RangoliDocument, opts: RenderOptions = {}): 
 
 /** Full CSS: tokens (all modes) + base + component states + node rules. */
 export function renderCss(doc: RangoliDocument, fragmentCss: string, used: string[]): string {
-  return [tokensToCss(doc.data.tokens, ['light', 'dark']), BASE_CSS, componentStateCss(new Set(used)), fragmentCss].filter(Boolean).join('\n\n');
+  return [tokensToCss(doc.data.tokens, ['light', 'dark']), BASE_CSS, componentBaseCss(new Set(used)), fragmentCss, motionCss(doc.data.motion, doc.data.tokens)].filter(Boolean).join('\n\n');
 }
 
 /** Standalone HTML page — the reference render. */

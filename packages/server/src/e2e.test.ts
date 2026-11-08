@@ -119,6 +119,23 @@ Runs col gap6 p6 w960 fill:canvas
     expect(c.text).toMatch(/light: \d+\.\d+:1 (AA|AAA)/);
   });
 
+  it('motion: preset, curve as numbers, lint, export', async () => {
+    const preset = await call('motion_preset', { target: '#n5', preset: 'listItem' });
+    expect(preset.isError).toBe(false);
+    expect(preset.text).toContain('Motion lint: clean');
+    const curve = await call('motion_curve', { target: '#n5', trigger: 'enter' });
+    expect(curve.text).toMatch(/enter \(200ms, out\)\n {2}opacity: 0 [\d. ]+ 1\n {2}y: 4 [\d. ]+ 0\n {2}t\(ms\): 0 40 80 120 160 200/);
+    const draft = await call('motion_curve', { draft: 'enter opacity:0 base spring:snappy' });
+    expect(draft.text).toMatch(/enter \(\d+ms, spring:snappy\)/);
+    const slop = await call('rdl_apply', { script: 'motion #n5\n  hover y:-4, shadow:lg 300ms out' });
+    expect(slop.text).toContain('M11');
+    const get = await call('motion_get', { targets: ['#n5'] });
+    expect(get.text).toContain('motion #n5');
+    const out = join(dir, 'motion.css');
+    await call('export', { format: 'css-motion', outFile: out });
+    expect(await readFile(out, 'utf8')).toContain('@keyframes rg-n5-enter');
+  });
+
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));
     const page = JSON.parse(await readFile(join(dir, 'app.rangoli', 'pages', 'p1.json'), 'utf8')) as { nodes: Record<string, unknown> };

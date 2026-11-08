@@ -10,7 +10,7 @@ Full spec: [docs/SPEC.md](docs/SPEC.md)
 |---|---|---|
 | 0 | Engine (model, atomic ops + undo, RDL, OKLCH tokens + contrast, HTML/CSS renderer, linter, file format) + MCP server + live preview + CLI | ✅ done |
 | 1 | Visual editor: canvas (shadow DOM, exact CSS), layers, inspector (Design/RDL/CSS), tokens & palette, lint with one-click fixes, activity feed, live sync with agents, shared undo, copy/paste as RDL | ✅ done |
-| 2 | Motion tokens, state transitions, enter/exit, motion lint | |
+| 2 | Motion as data (RDL `motion` blocks): states → CSS transitions, enter/exit → keyframes, springs → CSS `linear()`, automatic reduced-motion variants, motion lint (M01–M11), presets, `motion_curve` value tables for agents, editor Motion tab with replay | ✅ done |
 | 3 | Collaboration & review (rooms, roles, change sets, comments, diff) | |
 | 4 | Timeline, smart/layout animate, prototype + exports | |
 | 5 | Icon Studio | |
@@ -49,12 +49,16 @@ Card col gap3 p4 w320 fill:surface stroke:border r3
 
 set #n4 variant=error "Failed"
 move #n6 before #n2
+
+motion #n1
+  enter opacity:0, scale:popIn, y:md base out
+  exit opacity:0, scale:popIn fast in
 ```
 ~3.5× fewer tokens than HTML+CSS for the same UI. Values are design tokens (spacing steps, color names, text styles), so output stays on-system and is themeable (light/dark).
 
 ## MCP tools
 
-`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · rdl_help`
+`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · rdl_help`
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
 

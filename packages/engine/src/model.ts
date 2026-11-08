@@ -164,7 +164,11 @@ export interface DocumentData {
   tokens: TokenTree;
   pages: Record<string, Page>;
   components: Record<string, ComponentDef>;
+  /** motion definitions keyed by target ("@Button", "@Button[variant=primary]", "#n7") */
+  motion?: Record<string, MotionDef>;
 }
+
+import type { MotionDef } from './motion.js';
 
 /** W3C DTCG-style token tree. Leaf: { $value, $type?, $description? } */
 export interface TokenLeaf {

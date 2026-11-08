@@ -7,6 +7,7 @@ import { resolveInstance } from './components.js';
 import type { RangoliDocument } from './document.js';
 import { isTokenRef, type Len, type Paint, type RNode, type Style } from './model.js';
 import { TokenResolver } from './tokens.js';
+import { lintMotion } from './motion.js';
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -214,6 +215,20 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
   for (const [root, ids] of primaryByRoot) {
     if (ids.length > 1) add({ code: 'D09', severity: 'P1', node: ids[1]!, message: `${ids.length} primary buttons in #${root}. Keep one primary action; make the rest secondary/ghost.`, fix: ids.slice(1).map((id) => `set #${id} variant=secondary`).join('\n') });
   }
+  // motion rules (M*) — only when linting the whole page, or for motion on the linted nodes
+  const inScope = (target: string) => !opts.roots || target.startsWith('@') || [...doc.walk(roots, page.id)].some(({ node }) => target === `#${node.id}` || target.startsWith(`#${node.id}[`));
+  const nonInteractive = (target: string) => {
+    if (!target.startsWith('#')) return false;
+    const n = page.nodes[target.slice(1).replace(/\[.*$/, '')];
+    return !!n && n.type !== 'instance' && !n.role;
+  };
+  for (const m of lintMotion(doc.data.motion, doc.data.tokens, nonInteractive)) {
+    if (!inScope(m.target)) continue;
+    const motionNode = m.target.startsWith('#') ? m.target.slice(1).replace(/\[.*$/, '') : m.target;
+    if (m.target.startsWith('#') && !page.nodes[motionNode]) continue;
+    add({ code: m.code, severity: m.severity, node: motionNode, message: `motion ${m.target} ${m.message}` });
+  }
+
   if (textStyles.size > 6) add({ code: 'D05', severity: 'P3', node: roots[0] ?? '', message: `${textStyles.size} different text styles in view — aim for ≤ 6 for a clear type scale` });
   if (radii.size > 4) add({ code: 'D07', severity: 'P3', node: roots[0] ?? '', message: `${radii.size} different corner radii — pick a consistent radius scale` });
 

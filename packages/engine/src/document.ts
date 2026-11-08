@@ -1,5 +1,6 @@
 import { IdGen } from './ids.js';
 import type { ComponentDef, DocumentData, Page, RNode, TokenTree } from './model.js';
+import type { MotionDef } from './motion.js';
 
 /** Atomic edit operations. Every op is reversible. */
 export type Op =
@@ -10,6 +11,8 @@ export type Op =
   | { op: 'setTokens'; tokens: TokenTree }
   | { op: 'setComponent'; component: ComponentDef }
   | { op: 'deleteComponent'; id: string }
+  /** set (def) or remove (null) a motion definition */
+  | { op: 'setMotion'; target: string; def: MotionDef | null }
   /** internal: restore a deleted subtree exactly */
   | { op: 'restore'; page: string; nodes: RNode[]; parent?: string; index: number };
 
@@ -60,6 +63,7 @@ export class RangoliDocument {
       tokens: {},
       pages: { [pageId]: { id: pageId, name: 'Page 1', children: [], nodes: {} } },
       components: {},
+      motion: {},
     });
   }
 
@@ -315,6 +319,14 @@ export class RangoliDocument {
         this.data.components[op.component.id] = clone(op.component);
         touched.add(`$component:${op.component.id}`);
         return prev ? [{ op: 'setComponent', component: clone(prev) }] : [{ op: 'deleteComponent', id: op.component.id }];
+      }
+      case 'setMotion': {
+        const motion = (this.data.motion ??= {});
+        const prev = motion[op.target];
+        if (op.def) motion[op.target] = clone(op.def);
+        else delete motion[op.target];
+        touched.add(`$motion:${op.target}`);
+        return [{ op: 'setMotion', target: op.target, def: prev ? clone(prev) : null }];
       }
       case 'deleteComponent': {
         const prev = this.data.components[op.id];

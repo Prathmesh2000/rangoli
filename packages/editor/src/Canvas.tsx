@@ -19,6 +19,24 @@ function scopeCss(css: string): string {
     .replace(/(^|\n)body\{/g, '$1:host{');
 }
 
+let liveShadow: ShadowRoot | null = null;
+
+/** Replay a node's enter animation, or play its exit (adds [data-exiting] briefly). */
+export function playMotion(id: string, trigger: 'enter' | 'exit', ms = 600): void {
+  const el = liveShadow?.querySelector<HTMLElement>(`[data-rid="${id}"]`);
+  if (!el) return;
+  // the canvas suppresses enter/exit animations unless [data-play] is set, so editing never replays them
+  el.removeAttribute('data-play');
+  el.removeAttribute('data-exiting');
+  void el.offsetWidth; // reflow so the animation restarts
+  el.setAttribute('data-play', '');
+  if (trigger === 'exit') el.setAttribute('data-exiting', '');
+  window.setTimeout(() => {
+    el.removeAttribute('data-play');
+    el.removeAttribute('data-exiting');
+  }, ms);
+}
+
 export function Canvas() {
   const version = useEditor((s) => s.version);
   const mode = useEditor((s) => s.mode);
@@ -38,12 +56,14 @@ export function Canvas() {
     const doc = getState().doc;
     if (!host || !doc) return;
     const root = (shadowRef.current ??= host.attachShadow({ mode: 'open' }));
+    liveShadow = root;
     const frag = renderFragment(doc, { editorAttrs: true });
     const css = scopeCss(renderCss(doc, frag.css, frag.usedComponents));
     root.innerHTML = `<style>${css}
 :host{display:block;background:transparent!important}
 .stage{display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start;padding:64px}
 .stage>[data-rid]{background-clip:padding-box}
+.stage [data-rid]:not([data-play]){animation:none!important}
 </style><div class="stage">${frag.html}</div>`;
   }, [version]);
 

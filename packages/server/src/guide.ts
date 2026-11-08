@@ -17,6 +17,13 @@ RDL quick reference (one node per line, indentation = children):
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)
 - components: @Button(variant primary|secondary|ghost|danger, size sm|md|lg) @Chip(variant success|warning|error|info|neutral) @Input(size, state default|error|disabled; text=placeholder)
 - edit: set #id <flags> ["text"] · insert #id start|end|index N (children) · insert #id before|after (siblings) · move #id before|after #x · move #id into #p [start|end] · delete #id · replace #id + block
+- motion (block): motion @Button [variant=primary] | motion #id   then indented lines:
+    <trigger> <prop:value>[, …] <duration> <easing>     trigger: hover press focus disabled selected enter exit
+    props: opacity scale x y rotate fill color stroke shadow ring · enter single value = FROM, exit single value = TO, or a→b
+    duration: instant fast(120) base(200) slow(300) panel(350) | 180ms · easing: out in inOut drawer linear spring:snappy|gentle
+    e.g. motion #n7 / enter opacity:0, scale:popIn, y:md base out / exit opacity:0, scale:popIn fast in   ·  "motion #n7 none" removes
+  Motion rules: explain change, never decorate; ≤200ms for hover/press; exits faster than enters; no bounce, no hover-lift on static cards.
+  Use motion_presets / motion_preset, and motion_curve to "see" timing as numbers.
 Rules: use tokens not raw values; one primary action per view; every script is atomic + one undo step.
 Always run lint after changes and fix P0/P1. Call rdl_help for the full reference.`;
 
@@ -36,4 +43,8 @@ Text align: align:left|center|right
 Detail levels for reading: outline (names/ids/types only — cheapest) · compact (full RDL) · json (raw model)
 Lint codes: D01 raw color · D02 off-scale spacing · D03 contrast · D04 nested cards · D05 too many text styles
   D06 gradient (slop tell) · D07 too many radii · D08 tiny text · D09 multiple primary buttons · D10 unlabeled button
-  D12 empty frame · D14 off-scale radius · D15 missing token. Each issue may carry a ready-to-apply "fix:" RDL line.`;
+  D12 empty frame · D14 off-scale radius · D15 missing token. Each issue may carry a ready-to-apply "fix:" RDL line.
+  Motion: M01 slow · M02 janky property (w/h/shadow/blur) · M03 bouncy spring · M05 scale from < 0.8 · M07 exit ≥ enter
+  M10 slow focus feedback · M11 hover lift/scale on a non-interactive element (slop tell).
+Motion CSS: states → transitions (interruptible); enter → keyframes on mount; exit → add [data-exiting] then remove the
+  element after the animation; reduced motion is generated automatically (fades kept, movement removed).`;
