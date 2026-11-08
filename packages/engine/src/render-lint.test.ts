@@ -23,7 +23,7 @@ describe('renderer', () => {
     applyRdl(doc, CARD);
     const { html, css } = renderFragment(doc);
     expect(html).toContain('<h4 class="r-n3">Login smoke test</h4>');
-    expect(html).toContain('<button class="r-n6 rc-Button" data-variant="primary" data-size="sm" type="button">Run again</button>');
+    expect(html).toContain('<button class="r-n6 rc-Button" data-variant="primary" data-size="sm" data-state="default" type="button">Run again</button>');
     expect(css).toContain('.r-n1{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-4);width:320px');
     expect(css).toContain('box-shadow:inset 0 0 0 1px var(--color-border-default)');
     expect(css).toMatch(/\.r-n2\{display:flex;flex-direction:row;justify-content:space-between;align-items:center/);

@@ -6,6 +6,7 @@ import { Inspector } from './Inspector';
 import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
 import { IconStudio } from './IconStudio';
+import { InsertPalette } from './InsertPalette';
 import { ImageStudio } from './ImageStudio';
 import { ReviewPanel } from './ReviewPanel';
 import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId } from './store';
@@ -136,14 +137,8 @@ function Toolbar() {
           <button role="radio" aria-checked={view === 'images'} className="seg-item" onClick={() => setView('images')}>Images</button>
         </div>
         {editable && <div className="menu-wrap">
-          <button className="btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>Insert ▾</button>
-          {menu && (
-            <div className="menu" role="menu" onMouseLeave={() => setMenu(false)}>
-              {INSERTS.map((i) => (
-                <button key={i.key} role="menuitem" className="menu-item" onClick={() => { setMenu(false); void insert(i.rdl); }}>{i.label}</button>
-              ))}
-            </div>
-          )}
+          <button className="btn" aria-haspopup="dialog" aria-expanded={menu} title="Insert (I)" onClick={() => setMenu(!menu)}>Insert ▾</button>
+          {menu && <InsertPalette onInsert={(rdlLine) => void insert(rdlLine)} onClose={() => setMenu(false)} />}
         </div>}
         {editable && <button className="btn btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => void undo()}>↶</button>}
         {editable && <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>}

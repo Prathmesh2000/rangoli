@@ -4,6 +4,22 @@ Agent-first, implementation-neutral design tool. AI coding agents (Claude Code, 
 
 Full spec: [docs/SPEC.md](docs/SPEC.md)
 
+## Component library
+
+~30 components (Button, IconButton, Link, Input, Textarea, Select, SearchInput, Checkbox, Radio, Switch, Slider, Segmented, Rating, Badge, Chip, Tag, Status, Avatar, Kbd, Divider, Tooltip, Skeleton, Spinner, ProgressBar, RunBar, Tabs, Breadcrumbs, Pagination, Stepper, Alert, Toast) and ~32 one-line patterns (+page-header +stats +toolbar +table +sidebar-nav +topbar +form +settings-row +modal +drawer +dropdown-menu +command-palette +date-picker +combobox +empty-state +run-summary +test-case …). Inventory cross-checked against component.gallery (60 types across ~95 design systems) and MUI categories. Every component and pattern is rendered, linted and visually reviewed in light and dark.
+
+```
+App row w1440 h900 fill:canvas clip
+  +sidebar-nav selected=2
+  Main col wfill
+    +topbar
+    Content col gap6 p6 wfill
+      +page-header title="Test runs" crumbs="Checkout/Runs"
+      +stats
+      +toolbar
+      +table cols="Run|Status|Owner|Duration|Started" rows=6 select=true
+```
+
 ## Status
 
 | Phase | Scope | State |
@@ -67,7 +83,7 @@ Play it: `http://127.0.0.1:4400/play` (or **▶ Play** in the editor). Export: M
 
 ## MCP tools
 
-`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · proto_get · prototype_export · render_png · motion_filmstrip · icon_list · icon_get · icon_render · icon_export · asset_upload · asset_list · image_edit · image_templates · image_template · image_export · image_placeholder · rdl_help`
+`doc_info · doc_outline · node_get · search_nodes · rdl_apply · rdl_check · undo · redo · history · lint · tokens_get · tokens_set_brand · token_set · palette_generate · contrast_check · render_preview · export · selection_get · motion_get · motion_curve · motion_presets · motion_preset · suggest · suggestions_list · comments_list · comment · inbox · review_add · version_save · versions_list · diff · proto_get · prototype_export · render_png · motion_filmstrip · icon_list · icon_get · icon_render · icon_export · components_list · component_help · patterns_list · pattern_help · asset_upload · asset_list · image_edit · image_templates · image_template · image_export · image_placeholder · rdl_help`
 
 Every `rdl_apply` returns lint issues for the affected screen, with ready-to-apply RDL fixes.
 

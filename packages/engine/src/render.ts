@@ -9,6 +9,7 @@ import { cssVarName, TokenResolver, tokensToCss } from './tokens.js';
 import { motionCss } from './motion.js';
 import { compileIcon, findIcon } from './icons.js';
 import type { AssetMeta } from './images.js';
+import { ANATOMY, COMPONENT_CSS, SHARED_CSS } from './library.js';
 
 export interface RenderOptions {
   page?: string;
@@ -74,13 +75,21 @@ class Renderer {
         tag = comp.tag ?? 'div';
         this.usedComponents.add(comp.id);
         for (const [k, v] of Object.entries(r.variant)) attrs.push(`data-${k}="${esc(v)}"`);
-        const label = n.props?.[comp.labelProp ?? 'label'];
-        if (tag === 'input') {
-          attrs.push(`placeholder="${esc(String(label ?? ''))}"`);
+        const raw = n.props?.[comp.labelProp ?? 'label'];
+        const label = raw === undefined ? undefined : String(raw);
+        const anatomy = comp.anatomy ? ANATOMY[comp.anatomy] : undefined;
+        if (anatomy) {
+          const res = anatomy(n, r.variant, label, { esc, icon: (ref, px = 16) => this.iconSvg(ref, px) });
+          if (res.tag) tag = res.tag;
+          inner = res.inner;
+          attrs.push(...(res.attrs ?? []));
+        } else if (tag === 'textarea') {
+          attrs.push(`placeholder="${esc(label ?? '')}"`);
           if (r.variant.state === 'disabled') attrs.push('disabled');
-          if (r.variant.state === 'error') attrs.push('aria-invalid="true"');
-        } else if (label !== undefined) inner = esc(String(label));
-        if (tag === 'button') attrs.push('type="button"');
+          inner = esc(String(n.props?.value ?? ''));
+        } else if (label !== undefined) inner = esc(label);
+        if (tag === 'button' && !attrs.some((a) => a.startsWith('type='))) attrs.push('type="button"');
+        if (tag === 'a') attrs.push('href="#"');
       }
     }
 
@@ -160,6 +169,14 @@ class Renderer {
     if (decls.length) this.rules.push(`.r-${n.id}{${decls.join(';')}}`);
     if (tag === 'img' || tag === 'input') return `<${tag} ${attrs.join(' ')}>`;
     return `<${tag} ${attrs.join(' ')}>${inner}</${tag}>`;
+  }
+
+  /** Inline SVG for an icon reference (used inside component anatomy). */
+  iconSvg(ref: string, px: number): string {
+    const found = findIcon(this.doc.data.icons, ref);
+    if (!found) return '';
+    const paths = compileIcon(found.icon.src).shapes.map((s) => (s.fill ? `<path d="${s.d}" fill="currentColor" stroke="none"/>` : `<path d="${s.d}"/>`)).join('');
+    return `<svg width="${px}" height="${px}" viewBox="0 0 ${found.set.grid} ${found.set.grid}" fill="none" stroke="currentColor" stroke-width="${found.icon.stroke ?? found.set.stroke}" stroke-linecap="${found.set.cap}" stroke-linejoin="${found.set.join}" aria-hidden="true">${paths}</svg>`;
   }
 
   layoutDecls(l: Layout, d: string[]) {
@@ -257,11 +274,11 @@ class Renderer {
   }
 }
 
-/** Static (non-motion) CSS for built-in components. Interaction motion comes from doc.data.motion. */
+/** Static (non-motion) CSS for used library components (parts + states). Interaction motion comes from doc.data.motion. */
 function componentBaseCss(used: Set<string>): string {
   const out: string[] = [];
-  if (used.has('Button')) out.push('.rc-Button{cursor:pointer;border:0;white-space:nowrap}', '.rc-Button:disabled{cursor:not-allowed}');
-  if (used.has('Input')) out.push('.rc-Input{border:0;outline:0}', '.rc-Input::placeholder{color:var(--color-text-disabled)}', '.rc-Input:disabled{cursor:not-allowed}');
+  for (const id of used) if (COMPONENT_CSS[id]) out.push(COMPONENT_CSS[id]!);
+  if (['Button', 'Status', 'Spinner'].some((c) => used.has(c))) out.push(SHARED_CSS);
   return out.join('\n');
 }
 

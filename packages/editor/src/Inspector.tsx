@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { renderFragment, resolveInstance, serializeRdl, type Dim, type Padding, type RNode } from '@rangoli/engine';
+import { LIBRARY, renderFragment, resolveInstance, serializeRdl, type Dim, type Padding, type RNode } from '@rangoli/engine';
 import { indent, lenValue, paintValue, resolvePaintHex, tokenOptions, type Opt } from './helpers';
 import { getState, rdl, useEditor } from './store';
 import { MotionTab } from './MotionTab';
@@ -67,9 +67,22 @@ function DesignTab({ node }: { node: RNode }) {
               <Segmented value={eff.variant[axis] ?? ''} options={values} onChange={(v) => set(id, `${axis}=${v}`)} />
             </Row>
           ))}
-          <Row label={comp.labelProp ?? 'label'}>
+          {!LIBRARY[comp.id]?.doc.noLabel && <Row label={comp.labelProp ?? 'label'}>
             <TextInput value={String(node.props?.[comp.labelProp ?? 'label'] ?? '')} onCommit={(v) => set(id, JSON.stringify(v), 'edit label')} />
-          </Row>
+          </Row>}
+          {Object.entries(LIBRARY[comp.id]?.doc.props ?? {}).map(([key, spec]) => (
+            <Row key={key} label={key}>
+              {spec.type === 'boolean' ? (
+                <Segmented value={String(node.props?.[key] ?? spec.default ?? false)} options={['true', 'false']} onChange={(v) => set(id, `${key}=${v}`)} />
+              ) : spec.type === 'icon' ? (
+                <Select value={String(node.props?.[key] ?? spec.default ?? '')} placeholder="none" onChange={(v) => set(id, `${key}=${v}`)}
+                  options={Object.values(getState().doc?.data.icons ?? {}).flatMap((s) => Object.keys(s.icons).map((n) => ({ value: n, label: n })))} />
+              ) : (
+                <TextInput value={String(node.props?.[key] ?? '')} onCommit={(v) => set(id, v === '' ? `${key}=""` : `${key}=${spec.type === 'number' && /^-?\d+(\.\d+)?$/.test(v) ? v : JSON.stringify(v)}`)} />
+              )}
+            </Row>
+          ))}
+          <p className="hint">{LIBRARY[comp.id]?.doc.description}</p>
         </Section>
       )}
 

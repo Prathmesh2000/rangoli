@@ -15,7 +15,12 @@ RDL quick reference (one node per line, indentation = children):
 - style: fill:<color> stroke:<color>[/width] color:<color> rN (radius step 1-5|full) shadow:sm|md|lg opacity:0.6 muted mono truncate clip
 - color names are tokens: surface canvas subtle border text.secondary primary.600 status.error.fg … (#hex allowed but linted)
 - text: quoted string; text style = token name (caption label body-sm body body-lg title-sm title headline display code)
-- components: @Button(variant primary|secondary|ghost|danger, size sm|md|lg) @Chip(variant success|warning|error|info|neutral) @Input(size, state default|error|disabled; text=placeholder)
+- components (≈30, see components_list / component_help): Button IconButton Link · Input Textarea Select SearchInput Checkbox Radio
+    Switch Slider Segmented Rating · Badge Chip Tag Status Avatar Kbd Divider Tooltip Skeleton Spinner ProgressBar RunBar ·
+    Tabs Breadcrumbs Pagination Stepper · Alert Toast.   e.g. @Status variant=failed · @Tabs selected=1 "Overview|Runs:24|Settings"
+- patterns (one line → editable layers, see patterns_list / pattern_help): +page-header +stats +toolbar +table +sidebar-nav +topbar
+    +form +form-field +settings-row +modal +drawer +dropdown-menu +command-palette +empty-state +run-summary +test-case …
+    e.g.  +table cols="Run|Status|Owner|Duration" rows=6 select=true   — build whole screens from patterns, then refine with set/insert.
 - edit: set #id <flags> ["text"] · insert #id start|end|index N (children) · insert #id before|after (siblings) · move #id before|after #x · move #id into #p [start|end] · delete #id · replace #id + block
 - motion (block): motion @Button [variant=primary] | motion #id   then indented lines:
     <trigger> <prop:value>[, …] <duration> <easing>     trigger: hover press focus disabled selected enter exit

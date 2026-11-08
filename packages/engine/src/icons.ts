@@ -311,6 +311,22 @@ export function defaultIcons(): Record<string, IconSet> {
     user: 'circle 12 8.5 3.5\npath M5 19.5 Q5 14.5 12 14.5 Q19 14.5 19 19.5',
     calendar: 'rect 4.5 5.5 15 14 r=2\nline 4.5 10 19.5 10\nline 9 3.5 9 7\nline 15 3.5 15 7',
     retry: 'arc 12 12 7.5 0 315\npolyline 19.5 4 19.5 8.5 15 8.5',
+    home: 'polyline 4 10.5 12 4 20 10.5\npolyline 6 9 6 19.5 18 19.5 18 9\npolyline 10 19.5 10 14 14 14 14 19.5',
+    grid: 'rect 4 4 7 7 r=1.5\nrect 13 4 7 7 r=1.5\nrect 4 13 7 7 r=1.5\nrect 13 13 7 7 r=1.5',
+    list: 'line 9 6.5 20 6.5\nline 9 12 20 12\nline 9 17.5 20 17.5\ndot 5 6.5 1\ndot 5 12 1\ndot 5 17.5 1',
+    settings: 'line 4 7 6.5 7\nline 11.5 7 20 7\ncircle 9 7 2.5\nline 4 17 12.5 17\nline 17.5 17 20 17\ncircle 15 17 2.5',
+    bell: 'path M6 16.5 L6 11 Q6 5.5 12 5.5 Q18 5.5 18 11 L18 16.5 L19.5 18 L4.5 18 Z\npath M10 20.5 Q12 22 14 20.5\nline 12 3.5 12 5.5',
+    folder: 'path M3.5 7 Q3.5 5 5.5 5 L9.5 5 L11.5 7 L18.5 7 Q20.5 7 20.5 9 L20.5 17 Q20.5 19 18.5 19 L5.5 19 Q3.5 19 3.5 17 Z',
+    chart: 'line 4 20 20 20\nline 7 17 7 12\nline 12 17 12 6\nline 17 17 17 9.5',
+    upload: 'line 12 15 12 4.5\npolyline 7.5 9 12 4.5 16.5 9\npolyline 4.5 15 4.5 19.5 19.5 19.5 19.5 15',
+    download: 'line 12 4.5 12 15\npolyline 7.5 10.5 12 15 16.5 10.5\npolyline 4.5 15 4.5 19.5 19.5 19.5 19.5 15',
+    copy: 'rect 8.5 8.5 11 11 r=2\npolyline 15.5 8.5 15.5 4.5 4.5 4.5 4.5 15.5 8.5 15.5',
+    eye: 'path M2.5 12 Q12 3 21.5 12 Q12 21 2.5 12 Z\ncircle 12 12 3',
+    lock: 'rect 5 10.5 14 9.5 r=2\npath M8 10.5 L8 7.5 Q8 3.5 12 3.5 Q16 3.5 16 7.5 L16 10.5',
+    mail: 'rect 3.5 5.5 17 13 r=2\npolyline 4 7 12 13 20 7',
+    bug: 'rect 8 8 8 11.5 r=4\nline 9.5 4.5 10.5 7\nline 14.5 4.5 13.5 7\nline 4.5 11.5 8 12.5\nline 19.5 11.5 16 12.5\nline 4.5 17 8 16\nline 19.5 17 16 16',
+    layers: 'polygon 12 4 20 8.5 12 13 4 8.5\npolyline 4 12.5 12 17 20 12.5\npolyline 4 16 12 20.5 20 16',
+    logout: 'polyline 9.5 4.5 5 4.5 5 19.5 9.5 19.5\nline 10 12 20 12\npolyline 16 8 20 12 16 16',
   };
   return {
     ui: {

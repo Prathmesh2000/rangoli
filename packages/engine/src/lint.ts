@@ -197,12 +197,12 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
     }
 
     // D09 one primary action / D10 unlabeled buttons
-    if (n.type === 'instance' && n.component === 'Button') {
-      const comp = doc.data.components.Button!;
+    if (n.type === 'instance' && (n.component === 'Button' || n.component === 'IconButton')) {
+      const comp = doc.data.components[n.component]!;
       const v = { ...comp.defaults, ...(n.variant ?? {}) };
-      if (v.variant === 'primary') primaryByRoot.set(rootId, [...(primaryByRoot.get(rootId) ?? []), n.id]);
+      if (n.component === 'Button' && v.variant === 'primary') primaryByRoot.set(rootId, [...(primaryByRoot.get(rootId) ?? []), n.id]);
       const label = n.props?.[comp.labelProp ?? 'label'];
-      if ((label === undefined || label === '') && !n.props?.ariaLabel) add({ code: 'D10', severity: 'P1', node: n.id, message: 'Button has no text label or ariaLabel (screen readers announce nothing)', fix: `set #${n.id} ariaLabel="…"` });
+      if ((label === undefined || label === '') && !n.props?.ariaLabel) add({ code: 'D10', severity: 'P1', node: n.id, message: `${n.component} has no accessible label (screen readers announce nothing) — add quoted text`, fix: `set #${n.id} "…"` });
     }
 
     // D12 empty frames

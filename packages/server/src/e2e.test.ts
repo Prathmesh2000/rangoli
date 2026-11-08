@@ -268,6 +268,18 @@ Runs col gap6 p6 w960 fill:canvas
     expect((await fetch(previewUrl + 'assets/..%2Fmanifest.json')).status).toBe(404);
   }, 90000);
 
+  it('library: discover components and patterns, build a whole screen in one script', async () => {
+    const comps = await call('components_list');
+    for (const c of ['Inputs', 'Navigation', 'Feedback', '@Status variant=failed', '@Tabs selected=1']) expect(comps.text).toContain(c);
+    expect((await call('component_help', { name: 'Pagination' })).text).toContain('prop pages (number, default 10)');
+    expect((await call('patterns_list')).text).toContain('+table [Data]');
+    expect((await call('pattern_help', { name: '+table' })).text).toContain('cols="Run|Status|Duration|Started"');
+    const screen = await call('rdl_apply', { script: 'Screen row w1440 h900 fill:canvas clip\n  +sidebar-nav selected=1\n  Main col gap6 p6 wfill\n    +page-header title="Test cases" primary="New test case"\n    +table cols="Test case|Status|Owner" rows=4' });
+    expect(screen.isError).toBe(false);
+    expect(screen.text).toMatch(/created: #\w+/);
+    expect(screen.text).not.toMatch(/\[P[01]\]/); // no serious lint on a pattern-built screen
+  });
+
   it('persists to disk (autosave)', async () => {
     await new Promise((r) => setTimeout(r, 400));
     const page = JSON.parse(await readFile(join(dir, 'app.rangoli', 'pages', 'p1.json'), 'utf8')) as { nodes: Record<string, unknown> };

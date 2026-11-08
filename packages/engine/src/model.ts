@@ -154,6 +154,10 @@ export interface ComponentDef {
   tag?: string;
   /** role hint */
   role?: string;
+  /** built-in inner-markup renderer key (checkbox box, switch track, tabs list …) */
+  anatomy?: string;
+  /** user-customised definition: never replaced by library upgrades */
+  custom?: boolean;
 }
 
 export interface Manifest {

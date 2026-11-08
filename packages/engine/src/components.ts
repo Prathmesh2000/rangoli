@@ -3,68 +3,24 @@ import { RangoliDocument } from './document.js';
 import { defaultTokens, type DefaultTokenOptions } from './tokens.js';
 import { defaultMotion } from './motion.js';
 import { defaultIcons } from './icons.js';
-
-const t = (token: string) => ({ token });
+import { libraryComponents } from './library.js';
 
 /**
- * Implementation-neutral starter components. Adapters map these to real code components.
+ * Implementation-neutral component library (see library.ts). Adapters map these to real code components.
  */
 export function defaultComponents(): Record<string, ComponentDef> {
-  const button: ComponentDef = {
-    id: 'Button',
-    name: 'Button',
-    tag: 'button',
-    role: 'action',
-    labelProp: 'label',
-    axes: { variant: ['primary', 'secondary', 'ghost', 'danger'], size: ['sm', 'md', 'lg'] },
-    defaults: { variant: 'primary', size: 'md' },
-    styles: [
-      {
-        when: {},
-        layout: { mode: 'row', gap: t('space.2'), align: 'center', justify: 'center', padding: [0, t('space.4'), 0, t('space.4')] },
-        size: { h: { kind: 'fixed', v: 36 }, w: { kind: 'hug' } },
-        style: { radius: t('radius.2'), textStyle: t('textStyle.label') },
-      },
-      { when: { size: 'sm' }, size: { h: { kind: 'fixed', v: 32 } }, layout: { mode: 'row', padding: [0, t('space.3'), 0, t('space.3')] }, style: {} },
-      { when: { size: 'lg' }, size: { h: { kind: 'fixed', v: 44 } }, layout: { mode: 'row', padding: [0, t('space.5'), 0, t('space.5')] }, style: { textStyle: t('textStyle.body-lg') } },
-      { when: { variant: 'primary' }, style: { fill: [t('color.action.primary')], color: t('color.text.onPrimary') } },
-      { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], color: t('color.text.primary'), stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' } } },
-      { when: { variant: 'ghost' }, style: { fill: [], color: t('color.text.primary') } },
-      { when: { variant: 'danger' }, style: { fill: [t('color.action.danger')], color: t('color.text.onDanger') } },
-    ],
-  };
-  const chip: ComponentDef = {
-    id: 'Chip',
-    name: 'Chip',
-    tag: 'span',
-    role: 'status',
-    labelProp: 'label',
-    axes: { variant: ['success', 'warning', 'error', 'info', 'neutral'] },
-    defaults: { variant: 'neutral' },
-    styles: [
-      { when: {}, layout: { mode: 'row', align: 'center', gap: t('space.1'), padding: [t('space.0.5'), t('space.2'), t('space.0.5'), t('space.2')] }, size: { w: { kind: 'hug' } }, style: { radius: t('radius.full'), textStyle: t('textStyle.caption'), font: { weight: 500 } } },
-      ...(['success', 'warning', 'error', 'info', 'neutral'] as const).map((v) => ({
-        when: { variant: v },
-        style: { fill: [t(`color.status.${v}.bg`)], color: t(`color.status.${v}.fg`) } as Style,
-      })),
-    ],
-  };
-  const input: ComponentDef = {
-    id: 'Input',
-    name: 'Input',
-    tag: 'input',
-    role: 'field',
-    labelProp: 'placeholder',
-    axes: { size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
-    defaults: { size: 'md', state: 'default' },
-    styles: [
-      { when: {}, layout: { mode: 'row', align: 'center', padding: [0, t('space.3'), 0, t('space.3')] }, size: { h: { kind: 'fixed', v: 36 }, w: { kind: 'fill' } }, style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.2'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
-      { when: { size: 'sm' }, size: { h: { kind: 'fixed', v: 32 } }, style: {} },
-      { when: { state: 'error' }, style: { stroke: { paint: t('color.error.600'), width: 1, align: 'inside' } } },
-      { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
-    ],
-  };
-  return { Button: button, Chip: chip, Input: input };
+  return libraryComponents();
+}
+
+/**
+ * Upgrade a document's components: built-in definitions follow the library unless the user marked
+ * them custom; user-made components are kept.
+ */
+export function withLibrary(saved: Record<string, ComponentDef> | undefined): Record<string, ComponentDef> {
+  const lib = libraryComponents();
+  const out: Record<string, ComponentDef> = { ...(saved ?? {}) };
+  for (const [id, def] of Object.entries(lib)) if (!saved?.[id]?.custom) out[id] = def;
+  return out;
 }
 
 /** Resolve the effective layout/size/style of an instance: component base → matching variant rules → node overrides. */
@@ -86,7 +42,7 @@ export function resolveInstance(node: RNode, comp: ComponentDef): { layout?: Lay
   return { layout, size, style, variant };
 }
 
-/** New document with default tokens and starter components. */
+/** New document with default tokens and the full component library. */
 export function createDocument(name = 'Untitled', tokenOpts: DefaultTokenOptions = {}): RangoliDocument {
   const doc = RangoliDocument.empty(name);
   doc.data.tokens = defaultTokens(tokenOpts);

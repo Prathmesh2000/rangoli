@@ -1,0 +1,84 @@
+Sheet col gap6 p6 w1200 fill:canvas name:"Component sheet"
+  Actions row gap3 center wrap
+    @Button variant=primary "Run tests"
+    @Button variant=secondary "Export"
+    @Button variant=ghost "Cancel"
+    @Button variant=danger "Delete"
+    @Button variant=primary state=loading "Running"
+    @Button variant=secondary state=disabled "Disabled"
+    @Button variant=secondary size=sm "Small"
+      Icon icon:plus w16 h16
+    @IconButton icon=more "More actions"
+    @IconButton variant=secondary icon=filter "Filter"
+    @IconButton variant=primary icon=play "Run"
+    @Link "View all runs"
+    @Link variant=muted "Docs"
+  Fields row gap4 start
+    Col1 col gap3 w280
+      @Input "name@company.com"
+      @Input icon=search value="checkout" "Search"
+      @Input state=error value="prathmesh@" "Email"
+      @Input state=disabled "Disabled"
+    Col2 col gap3 w280
+      @Select "Last 7 days"
+      @Select placeholder="Choose a suite"
+      @SearchInput shortcut=/ "Search test cases"
+      @Textarea "Describe the failure"
+    Col3 col gap3 w280
+      @Checkbox checked=true "Include flaky tests"
+      @Checkbox checked=false "Only failures"
+      @Checkbox checked=mixed "Some suites"
+      @Radio checked=true "Nightly"
+      @Radio checked=false "On demand"
+      @Switch checked=true "Retry failed tests"
+      @Switch checked=false "Notify on Slack"
+    Col4 col gap4 w280
+      @Slider value=30 "Timeout (s)"
+      @Segmented selected=0 "List|Board|Timeline"
+      @Rating value=4
+      @ProgressBar value=72 "Running · 72%"
+      @ProgressBar variant=error size=sm value=30
+  Display row gap3 center wrap
+    @Badge "3"
+    @Badge variant=error "12"
+    @Badge variant=success kind=dot "Online"
+    @Chip variant=success "Passed"
+    @Chip variant=error "Failed"
+    @Chip variant=warning "Flaky"
+    @Chip variant=info "Queued"
+    @Tag "smoke"
+    @Tag removable=true "checkout"
+    @Status variant=passed
+    @Status variant=failed
+    @Status variant=running
+    @Status variant=skipped
+    @Status variant=flaky
+    @Status variant=blocked
+    @Avatar size=sm "Asha Rao"
+    @Avatar "Prathmesh Agrawal"
+    @Avatar size=lg tone=primary "Dev Ops"
+    @Kbd "Ctrl K"
+    @Tooltip "Copy run ID"
+    @Spinner "Loading"
+  Nav col gap4
+    @Tabs selected=1 "Overview|Runs:24|Settings"
+    @Tabs variant=pill selected=0 "All|Failed:3|Flaky:2"
+    NavRow row gap6 center
+      @Breadcrumbs "Projects/Checkout/Suites"
+      @Pagination page=4 pages=12
+    @Stepper current=1 "Select suite|Configure|Review"
+  Feedback row gap4 start
+    FbCol col gap3 w560
+      @Alert variant=info "Runs older than 90 days are archived."
+      @Alert variant=warning title="3 tests are flaky" dismissible=true "They failed in 2 of the last 10 runs."
+      @Alert variant=error title="Run failed to start" "The runner could not reach the staging environment."
+      @RunBar passed=142 failed=3 skipped=5 flaky=2 "Last run"
+    FbCol2 col gap3 w400
+      @Toast variant=success action=Undo "Run deleted"
+      @Toast variant=error "Could not export results"
+      SkelRow row gap3 center
+        @Skeleton shape=circle
+        SkelText col gap2
+          @Skeleton w180
+          @Skeleton w120
+      @Divider "or"

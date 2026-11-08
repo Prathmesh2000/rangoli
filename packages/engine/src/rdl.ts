@@ -16,6 +16,7 @@ import { parseMotionLines, targetKey } from './motion.js';
 import { parseProtoLines, parseTimelineLines } from './prototype.js';
 import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
 import { findAsset } from './images.js';
+import { expandPatterns } from './patterns.js';
 
 export interface Diagnostic {
   line: number;
@@ -109,7 +110,7 @@ const isCommandLine = (ln: Line) =>
   (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? ''));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
-  const lines = lex(src);
+  const lines = lex(expandPatterns(src));
   const errors: Diagnostic[] = [];
   const commands: Command[] = [];
   let i = 0;

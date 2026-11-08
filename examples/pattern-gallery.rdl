@@ -1,0 +1,21 @@
+Gallery row gap8 p8 w1480 wrap start fill:canvas name:"Pattern gallery"
+  ColA col gap6 w480
+    +modal
+    +form
+    Settings col wfill
+      +settings-row
+      @Divider
+      +settings-row title="Default branch" desc="Runs triggered without a branch use this one." control=select value="main"
+    +empty-state
+  ColB col gap6 w320
+    +dropdown-menu
+    +date-picker
+    +combobox
+    +popover
+  ColC col gap6 w560
+    +command-palette
+    +accordion
+    +test-case
+    +run-summary
+  ColD col gap6 w440
+    +drawer

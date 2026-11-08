@@ -11,6 +11,8 @@ import {
   formatDiff,
   formatLint,
   previewScript,
+  LIBRARY,
+  patternHelp,
   findAsset,
   formatBytes,
   IMAGE_TEMPLATES,
@@ -738,6 +740,44 @@ export function createMcpServer(session: Session, opts: McpOptions = {}): McpSer
       if (format === 'react') await writeFile(join(outDir, 'index.ts'), icons.map((ic) => `export { ${pascal(ic.name)}Icon } from './${pascal(ic.name)}Icon';`).join('\n') + '\n');
       return text(`Wrote ${icons.length} ${format === 'svg' ? 'SVG files' : 'React components + index.ts'} → ${outDir}`);
     }),
+  );
+
+  // ---------------------------------------------------------------- component library & patterns
+  server.registerTool(
+    'components_list',
+    { description: 'All components (≈30) by category with variant axes and one-line usage. Use before designing.', inputSchema: { category: z.enum(['Actions', 'Inputs', 'Display', 'Navigation', 'Feedback', 'Data']).optional() } },
+    safe(({ category }) => {
+      const rows = Object.entries(LIBRARY).filter(([, d]) => !category || d.doc.category === category);
+      const byCat = new Map<string, string[]>();
+      for (const [name, d] of rows) {
+        const axes = Object.entries(d.axes).map(([k, vs]) => `${k}:${vs.join('|')}`).join(' ');
+        const props = Object.keys(d.doc.props ?? {}).join(',');
+        byCat.set(d.doc.category, [...(byCat.get(d.doc.category) ?? []), `  ${d.doc.example}${axes ? `   [${axes}]` : ''}${props ? ` props:${props}` : ''}`]);
+      }
+      return text([...byCat].map(([c, l]) => `${c}\n${l.join('\n')}`).join('\n'));
+    }),
+  );
+
+  server.registerTool(
+    'component_help',
+    { description: 'Details for one component: purpose, axes, props, example.', inputSchema: { name: z.string() } },
+    safe(({ name }) => {
+      const d = LIBRARY[name];
+      if (!d) throw new Error(`No component "${name}". Known: ${Object.keys(LIBRARY).join(', ')}`);
+      return text([`@${name} — ${d.doc.description}`, `axes: ${Object.entries(d.axes).map(([k, vs]) => `${k}=${vs.join('|')} (default ${d.defaults[k]})`).join('; ') || 'none'}`, `quoted text = ${d.labelProp ?? 'label'}`, ...Object.entries(d.doc.props ?? {}).map(([k, p]) => `prop ${k} (${p.type}${p.default !== undefined ? `, default ${p.default}` : ''}): ${p.description}`), `example: ${d.doc.example}`].join('\n'));
+    }),
+  );
+
+  server.registerTool(
+    'patterns_list',
+    { description: 'Larger building blocks inserted with ONE line "+name key=value" (tables, forms, modals, nav, stats, test-run summaries …). They expand into editable layers.', inputSchema: {} },
+    safe(() => text(patternHelp())),
+  );
+
+  server.registerTool(
+    'pattern_help',
+    { description: 'Parameters (with defaults) for one pattern.', inputSchema: { name: z.string() } },
+    safe(({ name }) => text(patternHelp(name.replace(/^\+/, '')))),
   );
 
   // ---------------------------------------------------------------- images & assets
