@@ -1,0 +1,17 @@
+id: TC-016
+feature: export
+title: Icon export works through the server tools
+priority: P2
+level: integration
+tags:
+  - regression
+covers:
+  - AC-7
+steps:
+  - Use icon tools to draft an icon
+  - Export the set
+expected:
+  - Export writes the icon files
+automation:
+  node: "packages/server/src/e2e.test.ts#icons: list, draft variants, render sheet
+    with lint, use in design, export"

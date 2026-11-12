@@ -1,0 +1,16 @@
+id: TC-003
+feature: export
+title: Text content is escaped in rendered output
+priority: P1
+level: unit
+tags:
+  - regression
+  - security
+covers:
+  - AC-3
+steps:
+  - Render a text layer whose content contains HTML
+expected:
+  - The HTML appears as escaped text, not as markup
+automation:
+  node: packages/engine/src/render-lint.test.ts#escapes text

@@ -13,6 +13,7 @@
  */
 import type { Diagnostic } from './rdl.js';
 import { cssVarName, TokenResolver } from './tokens.js';
+import { isSafeCssValue } from './safety.js';
 import type { TokenTree } from './model.js';
 
 export type MotionTrigger = 'hover' | 'press' | 'focus' | 'disabled' | 'selected' | 'enter' | 'exit';
@@ -264,6 +265,7 @@ function declsFor(tracks: MotionTrack[], which: 'from' | 'to', tokens: TokenReso
     if (raw === undefined) continue;
     if (reduced && (TRANSFORM_PROPS.has(t.prop) || t.prop === 'blur' || t.prop === 'w' || t.prop === 'h')) continue;
     const v = cssValue(t.prop, raw, tokens);
+    if (!isSafeCssValue(v)) continue; // stored motion values are free text
     switch (t.prop) {
       case 'opacity': d.push(`opacity:${v}`); break;
       case 'scale': transform.push(`scale(${v})`); break;

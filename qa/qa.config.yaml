@@ -1,0 +1,7 @@
+product: rangoli
+platforms:
+  - node
+  - web
+commands:
+  test: npm test
+  junit: npx vitest run --reporter=junit --outputFile={out} {files}

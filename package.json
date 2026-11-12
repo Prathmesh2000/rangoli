@@ -11,7 +11,8 @@
     "build": "tsc -b && npm run build -w @rangoli/editor",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test:postgres": "node scripts/test-postgres.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

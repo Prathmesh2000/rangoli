@@ -1,0 +1,18 @@
+id: TC-001
+feature: export
+title: Standalone HTML includes tokens, dark mode, reduced motion and states
+priority: P1
+level: unit
+tags:
+  - smoke
+  - regression
+covers:
+  - AC-1
+steps:
+  - Render a document with renderDocument
+expected:
+  - Output contains the tokens, the dark-mode block, reduced-motion rules and
+    component states
+automation:
+  node: packages/engine/src/render-lint.test.ts#standalone document includes
+    tokens, dark mode, reduced motion and component states

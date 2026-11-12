@@ -56,7 +56,7 @@ export function paintValue(p: Paint | undefined, r: TokenResolver): string {
   if (!p) return '';
   if (isTokenRef(p)) return r.shortName(p.token, 'color');
   if ('hex' in p) return p.hex;
-  return 'gradient';
+  return 'image' in p ? 'image' : 'gradient';
 }
 
 export function resolvePaintHex(p: Paint | undefined, r: TokenResolver, mode: string): string | undefined {

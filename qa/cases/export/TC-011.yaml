@@ -1,0 +1,17 @@
+id: TC-011
+feature: export
+title: Motion export works through the server tools
+priority: P2
+level: integration
+tags:
+  - regression
+covers:
+  - AC-5
+steps:
+  - Apply a motion preset through the MCP tools
+  - Export css-motion
+expected:
+  - The exported file contains the preset motion
+automation:
+  node: "packages/server/src/e2e.test.ts#motion: preset, curve as numbers, lint,
+    export"

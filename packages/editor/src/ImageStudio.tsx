@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cloneDocument, formatBytes, IMAGE_TEMPLATES, validateOps, type AssetMeta, type EditOp, type ImageFormat, type RNode } from '@rangoli/engine';
 import { renderInto } from './Canvas';
-import { canEdit, getState, rdl, select, setState, setView, toast, useEditor } from './store';
+import { canEdit, getState, rdl, select, setState, setView, toast, useEditor, api } from './store';
 
 const H = () => ({ 'content-type': 'application/json', ...(getState().myName ? { 'x-rangoli-name': getState().myName } : {}) });
 async function post<T>(path: string, body: unknown): Promise<T | null> {
-  const r = await fetch(path, { method: 'POST', headers: H(), body: JSON.stringify(body) });
+  const r = await fetch(api(path), { method: 'POST', headers: H(), body: JSON.stringify(body) });
   const data = (await r.json().catch(() => ({}))) as T & { error?: string };
   if (!r.ok) {
     toast('error', data.error ?? `Failed (${r.status})`);
@@ -27,7 +27,7 @@ export function ImageStudio() {
   const sel = useEditor((s) => s.imageSel);
   const doc = getState().doc;
   if (!doc) return null;
-  const assets = Object.values(doc.data.assets ?? {}).sort((a, b) => b.time - a.time);
+  const assets = Object.values(doc.data.assets ?? {}).filter((a) => a.mime.startsWith('image/')).sort((a, b) => b.time - a.time);
   const comps = doc.page().children.map((id) => doc.page().nodes[id]!).filter((n) => n.role === 'image');
   const asset = sel?.kind === 'asset' ? doc.data.assets?.[sel.id] : undefined;
   const comp = sel?.kind === 'comp' ? doc.findNode(sel.id)?.node : undefined;
@@ -71,7 +71,7 @@ function Library({ assets, comps }: { assets: AssetMeta[]; comps: RNode[] }) {
         <div className="asset-grid">
           {assets.map((a) => (
             <button key={a.id} className={`asset-tile${sel?.kind === 'asset' && sel.id === a.id ? ' is-sel' : ''}`} onClick={() => setState({ imageSel: { kind: 'asset', id: a.id } })} title={`${a.name} · ${a.w}×${a.h} · ${formatBytes(a.bytes)}`}>
-              <img src={`/assets/${a.file}`} alt="" loading="lazy" />
+              <img src={api(`/assets/${a.file}`)} alt="" loading="lazy" />
               <span className="asset-meta">{a.w}×{a.h} · {formatBytes(a.bytes)}</span>
             </button>
           ))}
@@ -148,7 +148,7 @@ function AssetPreview({ asset }: { asset: AssetMeta }) {
   return (
     <div className="img-preview">
       <div className="img-stage" style={{ width: asset.w * scale, height: asset.h * scale }}>
-        <img src={`/assets/${asset.file}`} alt={asset.alt ?? ''} style={{ width: '100%', height: '100%', filter, transform }} />
+        <img src={api(`/assets/${asset.file}`)} alt={asset.alt ?? ''} style={{ width: '100%', height: '100%', filter, transform }} />
         {r.crop && (
           <div className="crop-box" style={{ left: r.crop.x * scale, top: r.crop.y * scale, width: r.crop.w * scale, height: r.crop.h * scale }} aria-label="Crop area" />
         )}
@@ -249,7 +249,7 @@ function AssetPanel({ asset }: { asset: AssetMeta }) {
         <h3 className="section-title">Use & export</h3>
         <div className="chips">
           <button className="chip-btn" onClick={() => void navigator.clipboard?.writeText(`Image asset:${asset.id} w${Math.min(asset.w, 640)} h${Math.round(Math.min(asset.w, 640) * (asset.h / asset.w))} fit:cover alt:${JSON.stringify(asset.alt ?? '')}`).then(() => toast('info', 'RDL copied'))}>Copy RDL use</button>
-          <a className="chip-btn" href={`/assets/${asset.file}`} download={asset.name}>Download</a>
+          <a className="chip-btn" href={api(`/assets/${asset.file}`)} download={asset.name}>Download</a>
           {editable && <button className="chip-btn" onClick={() => void post(`/api/assets/${asset.id}/placeholder`, {}).then((x) => x && toast('info', 'Blur placeholder saved'))}>{asset.placeholder ? 'Redo' : 'Make'} blur placeholder</button>}
           {editable && <button className="chip-btn" onClick={() => void post(`/api/assets/${asset.id}/delete`, {}).then((x) => x && setState({ imageSel: null }))}>Delete</button>}
         </div>
@@ -294,7 +294,7 @@ function CompPreview({ node }: { node: RNode }) {
 function CompPanel({ node }: { node: RNode }) {
   const [format, setFormat] = useState<ImageFormat>('png');
   const [scale, setScale] = useState(2);
-  const url = useMemo(() => `/api/compose/${node.id}?format=${format}&scale=${scale}`, [node.id, format, scale]);
+  const url = useMemo(() => api(`/api/compose/${node.id}?format=${format}&scale=${scale}`), [node.id, format, scale]);
   return (
     <div className="props">
       <div className="inspector-head">

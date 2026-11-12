@@ -1,0 +1,17 @@
+id: TC-017
+feature: export
+title: Icon export names an unknown set in its error
+priority: P3
+level: integration
+technique: equivalence partitioning
+tags:
+  - regression
+covers:
+  - AC-7
+  - AC-10
+steps:
+  - Call icon_export with set "missing"
+expected:
+  - 'The tool returns the error: No icon set "missing"'
+  - No files are written
+automation: {}

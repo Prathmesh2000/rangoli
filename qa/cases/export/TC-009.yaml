@@ -1,0 +1,18 @@
+id: TC-009
+feature: export
+title: Motion export emits transitions, keyframes and reduced variants
+priority: P2
+level: unit
+tags:
+  - regression
+covers:
+  - AC-5
+steps:
+  - Generate motion CSS for states and enter/exit animations
+expected:
+  - CSS has transitions for states
+  - CSS has keyframes for enter and exit
+  - CSS has reduced-motion variants
+automation:
+  node: packages/engine/src/motion.test.ts#emits transitions for states, keyframes
+    for enter/exit, and reduced-motion variants

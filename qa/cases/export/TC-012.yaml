@@ -1,0 +1,17 @@
+id: TC-012
+feature: export
+title: Prototype export builds a standalone page
+priority: P1
+level: unit
+tags:
+  - smoke
+  - regression
+covers:
+  - AC-6
+steps:
+  - Build a prototype with swaps and smart animate
+expected:
+  - HTML is standalone, with literal easings, swap templates and smart keys
+automation:
+  node: packages/engine/src/prototype.test.ts#builds a standalone prototype with
+    literal easings, swap templates and smart keys

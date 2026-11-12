@@ -1,0 +1,32 @@
+# The render service: Chromium, away from the app. Runs `packages/server/dist/render/main.js`; deploy/aws/render-service.yaml.
+# Holds no database driver, AWS SDK or credentials. Pin both base images by digest when CI can resolve them.
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json tsconfig.json tsconfig.base.json ./
+COPY packages/engine/package.json packages/engine/
+COPY packages/server/package.json packages/server/
+COPY packages/editor/package.json packages/editor/
+RUN npm ci --ignore-scripts
+COPY packages packages
+RUN npx tsc -b
+
+FROM node:22-bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ENV NODE_ENV=production RANGOLI_BROWSER_PATH=/usr/bin/chromium HOST=0.0.0.0 PORT=4500 HOME=/tmp
+COPY package.json package-lock.json ./
+COPY packages/engine/package.json packages/engine/
+COPY packages/server/package.json packages/server/
+COPY packages/editor/package.json packages/editor/
+# three.js comes from the editor workspace; 3D scenes load it from disk because the page has no network
+RUN npm ci --omit=dev --ignore-scripts \
+ && rm -rf node_modules/pg node_modules/pg-* node_modules/@aws-sdk node_modules/@smithy node_modules/@electric-sql node_modules/@modelcontextprotocol
+COPY --from=build /app/packages/engine/dist packages/engine/dist
+COPY --from=build /app/packages/server/dist/render packages/server/dist/render
+# the root filesystem is read-only in production; this keeps /tmp writable for Chromium's profile and shared memory
+VOLUME /tmp
+USER node
+EXPOSE 4500
+CMD ["node", "packages/server/dist/render/main.js"]

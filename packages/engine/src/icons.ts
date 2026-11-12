@@ -9,6 +9,7 @@
  *     polyline 12 7.5 12 12 15 14
  */
 import type { Diagnostic } from './rdl.js';
+import { transformPath, variableStroke } from './icons-svg.js';
 
 export interface IconDef {
   name: string;
@@ -35,7 +36,37 @@ export interface CompiledShape {
   color?: string;
   /** vertices (for lint + editor handles) */
   points: [number, number][];
+  /** optional per-shape stroke width, opacity, dash pattern, fill rule */
+  w?: number;
+  o?: number;
+  dash?: string;
+  rule?: 'evenodd';
+  /** gradient paint "angle,colour,colour[,colour…]" */
+  grad?: string;
 }
+
+const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+
+/** One compiled shape as SVG. colour turns a token or #hex into CSS (the renderer resolves tokens). */
+export function shapeMarkup(s: CompiledShape, colour: (c: string) => string = (c) => c): string {
+  let paint = s.color ? colour(s.color) : undefined;
+  let defs = '';
+  if (s.grad) {
+    const [angle = '0', ...stops] = s.grad.split(',');
+    const id = `ig${hash(s.grad + s.d)}`;
+    const xs = s.points.map((p) => p[0]), ys = s.points.map((p) => p[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(1, Math.max(...xs) - x0), h = Math.max(1, Math.max(...ys) - y0);
+    const a = ((Number(angle) - 90) * Math.PI) / 180, cx = x0 + w / 2, cy = y0 + h / 2, r = Math.max(w, h) / 2;
+    const n = (v: number) => Math.round(v * 100) / 100;
+    defs = `<defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(cx - Math.cos(a) * r)}" y1="${n(cy - Math.sin(a) * r)}" x2="${n(cx + Math.cos(a) * r)}" y2="${n(cy + Math.sin(a) * r)}">${stops.map((c, i) => `<stop offset="${stops.length > 1 ? n(i / (stops.length - 1)) : 0}" stop-color="${colour(c)}"/>`).join('')}</linearGradient></defs>`;
+    paint = `url(#${id})`;
+  }
+  return defs + (s.fill ? `<path d="${s.d}" fill="${paint ?? 'currentColor'}" stroke="none"${shapeAttrs(s)}/>` : `<path d="${s.d}"${paint ? ` stroke="${paint}"` : ''}${shapeAttrs(s)}/>`);
+}
+
+/** Extra SVG attributes for a compiled shape. */
+export const shapeAttrs = (s: CompiledShape): string =>
+  `${s.w !== undefined ? ` stroke-width="${s.w}"` : ''}${s.o !== undefined ? ` opacity="${s.o}"` : ''}${s.dash ? ` stroke-dasharray="${s.dash.replace(/,/g, ' ')}"` : ''}${s.rule ? ` fill-rule="evenodd"` : ''}`;
 
 export interface CompiledIcon {
   shapes: CompiledShape[];
@@ -50,20 +81,23 @@ const snap = (n: number) => Math.round(n * 2) / 2;
 export function compileIcon(src: string, diag: Diagnostic[] = [], lineOffset = 0): CompiledIcon {
   const shapes: CompiledShape[] = [];
   let snapped = 0;
+  // "exact" on the first line keeps coordinates as written (imported art, free-hand curves)
+  const exact = /^\s*exact\b/.test(src);
   const num = (t: string, line: number): number => {
     const v = Number(t);
     if (!Number.isFinite(v)) {
       diag.push({ line, severity: 'error', message: `"${t}" is not a number` });
       return 0;
     }
+    if (exact) return v;
     const s = snap(v);
     if (Math.abs(s - v) > 1e-9) snapped++;
     return s;
   };
   src.split(/\r?\n/).forEach((raw, i) => {
     const line = i + 1 + lineOffset;
-    const text = raw.replace(/#.*$/, '').trim();
-    if (!text) return;
+    const text = raw.replace(/(^|\s)#.*$/, '').trim(); // a comment, not c=#hex
+    if (!text || text === 'exact') return;
     const [kind, ...rest] = text.split(/\s+/);
     const opts: Record<string, string> = {};
     const args: string[] = [];
@@ -130,6 +164,27 @@ export function compileIcon(src: string, diag: Diagnostic[] = [], lineOffset = 0
         shapes.push({ d: `M${f(x0)} ${f(y0)} A${f(r)} ${f(r)} 0 ${sweep > 180 ? 1 : 0} 1 ${f(x1)} ${f(y1)}`, fill: false, points: [[x0, y0], [x1, y1]] });
         break;
       }
+      case 'ellipse': {
+        const [cx, cy, rx, ry] = n(4) as [number, number, number, number];
+        shapes.push({ d: `M${f(cx - rx)} ${f(cy)} A${f(rx)} ${f(ry)} 0 1 0 ${f(cx + rx)} ${f(cy)} A${f(rx)} ${f(ry)} 0 1 0 ${f(cx - rx)} ${f(cy)} Z`, fill: false, points: [[cx - rx, cy], [cx + rx, cy], [cx, cy - ry], [cx, cy + ry]] });
+        break;
+      }
+      case 'ngon':
+      case 'star': {
+        // ngon cx cy r sides [deg] · star cx cy outer inner points [deg]
+        const star = kind === 'star';
+        const [cx, cy, r] = n(3) as [number, number, number];
+        const inner = star ? Number(args[3] ?? r / 2) : r;
+        const count = Math.max(3, Math.min(32, Math.round(Number(args[star ? 4 : 3] ?? 5))));
+        const rot = ((Number(args[star ? 5 : 4] ?? -90)) * Math.PI) / 180;
+        const total = star ? count * 2 : count;
+        const p: [number, number][] = Array.from({ length: total }, (_, k) => {
+          const rad = star && k % 2 ? inner : r, a = rot + (k * 2 * Math.PI) / total;
+          return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
+        });
+        shapes.push({ d: poly(p, true), fill: false, points: p });
+        break;
+      }
       case 'plus': {
         const [cx, cy, s] = n(3) as [number, number, number];
         const h = s / 2;
@@ -172,14 +227,49 @@ export function compileIcon(src: string, diag: Diagnostic[] = [], lineOffset = 0
         break;
       }
       default:
-        diag.push({ line, severity: 'error', message: `Unknown shape "${kind}". Use: line polyline polygon rect circle dot arc path check plus` });
+        diag.push({ line, severity: 'error', message: `Unknown shape "${kind}". Use: line polyline polygon rect circle ellipse ngon star dot arc path check plus` });
     }
     // shape options for illustrations: fill=true (closed shapes), c=<color token|#hex>
     const last = shapes[shapes.length - 1];
-    if (last && shapes.length && ['polygon', 'rect', 'circle', 'path'].includes(kind!) && opts.fill === 'true') last.fill = true;
+    if (last && shapes.length && ['polygon', 'rect', 'circle', 'path', 'ellipse', 'ngon', 'star'].includes(kind!) && opts.fill === 'true') last.fill = true;
+    if (last) {
+      if (opts.w !== undefined && Number.isFinite(Number(opts.w))) last.w = Number(opts.w);
+      if (opts.o !== undefined && Number.isFinite(Number(opts.o))) last.o = Number(opts.o);
+      if (opts.dash && /^[\d.,]+$/.test(opts.dash)) last.dash = opts.dash;
+      if (opts.rule === 'evenodd') last.rule = 'evenodd';
+      if (opts.grad) {
+        if (/^-?\d+(\.\d+)?(,(#[0-9a-fA-F]{3,8}|[\w.-]+)){2,6}$/.test(opts.grad)) last.grad = opts.grad;
+        else diag.push({ line, severity: 'error', message: 'grad= needs angle,colour,colour (e.g. grad=135,#f59e0b,#ef4444)' });
+      }
+      // vw=1,3,0.2 — stroke width along the path; becomes a filled outline
+      if (opts.vw) {
+        const w = opts.vw.split(',').map(Number);
+        if (w.some((x) => !Number.isFinite(x) || x < 0)) diag.push({ line, severity: 'error', message: 'vw= needs widths like 0.2,3,0.2' });
+        else if (!last.fill) { last.d = variableStroke(last.d, w); last.fill = true; delete last.w; }
+      }
+    }
     if (last && opts.c) {
       if (!/^(#[0-9a-fA-F]{3,8}|[\w.-]+)$/.test(opts.c)) diag.push({ line, severity: 'error', message: `c=${opts.c} must be a colour token or #hex` });
       else last.color = opts.c;
+    }
+    if (last) {
+      // sym=h12 v12 hv12 r6c12 — live copies mirrored or rotated about that grid position
+      if (opts.sym) {
+        const m = /^(?:(h|v|hv)|r(\d{1,2})c)(\d+(?:\.\d+)?)$/.exec(opts.sym);
+        if (!m) diag.push({ line, severity: 'error', message: 'sym= must be h12, v12, hv12 or r6c12' });
+        else {
+          const c = Number(m[3]);
+          const fns: ((x: number, y: number) => [number, number])[] = [];
+          if (m[1]?.includes('h')) fns.push((x, y) => [2 * c - x, y]);
+          if (m[1]?.includes('v')) fns.push((x, y) => [x, 2 * c - y]);
+          if (m[1] === 'hv') fns.push((x, y) => [2 * c - x, 2 * c - y]);
+          if (m[2]) for (let k = 1; k < Math.min(24, Number(m[2])); k++) {
+            const a = (k * 2 * Math.PI) / Number(m[2]), co = Math.cos(a), si = Math.sin(a);
+            fns.push((x, y) => [c + (x - c) * co - (y - c) * si, c + (x - c) * si + (y - c) * co]);
+          }
+          for (const fn of fns) shapes.push({ ...last, d: transformPath(last.d, fn), points: last.points.map(([x, y]) => fn(x, y)) });
+        }
+      }
     }
   });
   const all = shapes.flatMap((s) => s.points);
@@ -196,7 +286,7 @@ export function iconSvg(set: IconSet, icon: IconDef, opts: { size?: number; titl
   const sw = icon.stroke ?? set.stroke;
   const size = opts.size ?? set.grid;
   const paths = c.shapes
-    .map((s) => (s.fill ? `<path d="${s.d}" fill="currentColor" stroke="none"/>` : `<path d="${s.d}"/>`))
+    .map((s) => shapeMarkup(s))
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${set.grid} ${set.grid}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="${set.cap}" stroke-linejoin="${set.join}"${opts.className ? ` class="${opts.className}"` : ''}${opts.title ? ` role="img" aria-label="${opts.title}"` : ' aria-hidden="true"'}>${opts.title ? `<title>${opts.title}</title>` : ''}${paths}</svg>`;
 }
@@ -208,7 +298,7 @@ export function iconReact(set: IconSet, icon: IconDef): string {
   const c = compileIcon(icon.src);
   const sw = icon.stroke ?? set.stroke;
   const name = `${pascal(icon.name)}Icon`;
-  const paths = c.shapes.map((s) => (s.fill ? `      <path d="${s.d}" fill="currentColor" stroke="none" />` : `      <path d="${s.d}" />`)).join('\n');
+  const paths = c.shapes.map((s) => `      ${shapeMarkup(s).replace(/stroke-width=/g, 'strokeWidth=').replace(/stroke-dasharray=/g, 'strokeDasharray=').replace(/fill-rule=/g, 'fillRule=').replace(/gradientUnits=/g, 'gradientUnits=').replace(/stop-color=/g, 'stopColor=').replace(/"\/>/g, '" />')}`).join('\n');
   return `import type { SVGProps } from 'react';
 
 export function ${name}({ size = ${set.grid === 24 ? 20 : set.grid}, title, ...props }: SVGProps<SVGSVGElement> & { size?: number; title?: string }) {
@@ -229,7 +319,7 @@ export function iconSprite(set: IconSet): string {
     .map((ic) => {
       const c = compileIcon(ic.src);
       const sw = ic.stroke ?? set.stroke;
-      return `<symbol id="${set.name}-${ic.name}" viewBox="0 0 ${set.grid} ${set.grid}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="${set.cap}" stroke-linejoin="${set.join}">${c.shapes.map((s) => (s.fill ? `<path d="${s.d}" fill="currentColor" stroke="none"/>` : `<path d="${s.d}"/>`)).join('')}</symbol>`;
+      return `<symbol id="${set.name}-${ic.name}" viewBox="0 0 ${set.grid} ${set.grid}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="${set.cap}" stroke-linejoin="${set.join}">${c.shapes.map((x) => shapeMarkup(x)).join('')}</symbol>`;
     })
     .join('\n');
   return `<svg xmlns="http://www.w3.org/2000/svg" style="display:none">\n${symbols}\n</svg>\n`;
@@ -264,7 +354,7 @@ export function lintIcons(sets: Record<string, IconSet> | undefined, only?: stri
       const diag: Diagnostic[] = [];
       const c = compileIcon(ic.src, diag);
       for (const d of diag.filter((x) => x.severity === 'error')) add('I00', 'P0', `line ${d.line}: ${d.message}`);
-      if (c.snapped) add('I01', 'P3', `${c.snapped} coordinate(s) snapped to the 0.5 grid — write them on-grid for crisp rendering`);
+      if (c.snapped && !/^\s*exact\b/.test(ic.src)) add('I01', 'P3', `${c.snapped} coordinate(s) snapped to the 0.5 grid — write them on-grid for crisp rendering`);
       const g = set.grid, safe = g / 16; // 1.5 on a 24 grid
       if (c.shapes.length && (c.bbox.x0 < safe || c.bbox.y0 < safe || c.bbox.x1 > g - safe || c.bbox.y1 > g - safe)) add('I02', 'P2', `extends outside the live area (${safe}–${g - safe}); strokes will clip or look heavier than the set`);
       if (ic.stroke !== undefined && ic.stroke !== set.stroke) add('I03', 'P2', `stroke ${ic.stroke} differs from the set's ${set.stroke} — mixed weights look accidental`);
@@ -310,6 +400,14 @@ export function defaultIcons(): Record<string, IconSet> {
     cart: 'polyline 3 4 5.5 4 8 15.5 18.5 15.5 20.5 7.5 6.5 7.5\ndot 9 19.5\ndot 17.5 19.5',
     'chevron-up': 'polyline 6 15 12 9 18 15',
     'arrow-right': 'line 4 12 20 12\npolyline 14 6 20 12 14 18',
+    wallet: 'rect 3.5 6 17 13 r=2\npath M3.5 9.5 L20.5 9.5\ncircle 16.5 14 1',
+    coin: 'circle 12 12 8.5\npath M9 9.5 L13.5 9.5 Q15 9.5 15 11 Q15 12 13.5 12 L9.5 12 Q8.5 12 8.5 13.5 Q8.5 14.5 10 14.5 L15 14.5\nline 12 7.5 12 16.5',
+    gas: 'rect 4.5 4 10 16 r=1.5\nline 7.5 8.5 11.5 8.5\npath M14.5 11 L17 11 Q18.5 11 18.5 12.5 L18.5 16 Q18.5 17.5 19.5 17.5',
+    network: 'polygon 12 3 20 7.5 20 16.5 12 21 4 16.5 4 7.5\ncircle 12 12 2.5',
+    swap: 'polyline 7 4 3.5 7.5 7 11\nline 3.5 7.5 17 7.5\npolyline 17 13 20.5 16.5 17 20\nline 20.5 16.5 7 16.5',
+    shield: 'path M12 3 L19.5 6 L19.5 11.5 Q19.5 18 12 21 Q4.5 18 4.5 11.5 L4.5 6 Z',
+    gem: 'polygon 7 4 17 4 21 9.5 12 20.5 3 9.5\nline 3 9.5 21 9.5',
+    cube: 'polygon 12 3 20 7.5 20 16.5 12 21 4 16.5 4 7.5\npolyline 4 7.5 12 12 20 7.5\nline 12 12 12 21',
     grip: 'dot 9 6\ndot 15 6\ndot 9 12\ndot 15 12\ndot 9 18\ndot 15 18',
     plus: 'line 12 5 12 19\nline 5 12 19 12',
     close: 'line 6 6 18 18\nline 18 6 6 18',
@@ -362,13 +460,35 @@ export function defaultIcons(): Record<string, IconSet> {
 
 /** Resolve "search" or "ui/search" → [set, icon]. */
 export function findIcon(sets: Record<string, IconSet> | undefined, ref: string): { set: IconSet; icon: IconDef } | undefined {
-  if (!sets) return undefined;
   const [a, b] = ref.includes('/') ? ref.split('/', 2) : [undefined, ref];
   if (a) {
-    const set = sets[a];
+    const set = sets?.[a];
     const icon = set?.icons[b!];
-    return set && icon ? { set, icon } : undefined;
+    if (set && icon) return { set, icon };
+    return packIcon(a, b!);
   }
-  for (const set of Object.values(sets)) if (set.icons[b!]) return { set, icon: set.icons[b!]! };
+  for (const set of Object.values(sets ?? {})) if (set.icons[b!]) return { set, icon: set.icons[b!]! };
+  for (const name of Object.keys(packs)) { const hit = packIcon(name, b!); if (hit) return hit; }
   return undefined;
 }
+
+// ---------------------------------------------------------------- bundled packs
+
+/** Large icon packs live outside documents: only the icons a design uses end up in its output. */
+const packs: Record<string, { set: IconSet; rows: Map<string, string> }> = {};
+
+export function registerIconPack(name: string, data: string): void {
+  const rows = new Map(data.split('\n').map((l) => { const i = l.indexOf('|'); return [l.slice(0, i), l.slice(i + 1)] as const; }));
+  packs[name] = { set: { name, grid: 24, stroke: 1.5, cap: 'round', join: 'round', icons: {} }, rows };
+}
+
+function packIcon(name: string, icon: string): { set: IconSet; icon: IconDef } | undefined {
+  const p = packs[name];
+  const row = p?.rows.get(icon);
+  if (!p || row === undefined) return undefined;
+  const def = (p.set.icons[icon] ??= { name: icon, src: `exact\n${row.split(';').map((s) => (/^[a-z]/.test(s) ? s : `path ${s}`)).join('\n')}` });
+  return { set: p.set, icon: def };
+}
+
+/** Names available in a bundled pack (empty until the pack is loaded). */
+export const packIconNames = (name: string): string[] => [...(packs[name]?.rows.keys() ?? [])];

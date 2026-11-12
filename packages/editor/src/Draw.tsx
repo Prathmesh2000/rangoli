@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RangoliDocument } from '@rangoli/engine';
 import { canEdit, getState, rdl, select, setTool, useEditor, type Tool } from './store';
+import { snapper } from './dnd';
 
 /**
  * Drawing tools. Everything drawn becomes ordinary RDL (absolute layers, pen paths via d:"…"), so a
@@ -230,9 +231,16 @@ function track(e: React.PointerEvent, onMove: (dx: number, dy: number) => void, 
 }
 
 export function startMove(e: React.PointerEvent, el: HTMLElement, id: string, x: number, y: number, zoom: number) {
-  track(e, (dx, dy) => { el.style.translate = `${dx / zoom}px ${dy / zoom}px`; }, (dx, dy, moved) => {
+  const doc = getState().doc!;
+  const snap = snapper(el, doc.findNode(id)!.node, doc);
+  let last = { dx: 0, dy: 0 };
+  track(e, (dx, dy) => {
+    last = e.altKey ? { dx, dy } : snap.apply(dx, dy);
+    el.style.translate = `${last.dx / zoom}px ${last.dy / zoom}px`;
+  }, (_dx, _dy, moved) => {
     el.style.translate = '';
-    if (moved) void rdl(`set #${id} at:${Math.round(x + dx / zoom)},${Math.round(y + dy / zoom)}`, 'move');
+    snap.done();
+    if (moved) { void rdl(`set #${id} at:${Math.round(x + last.dx / zoom)},${Math.round(y + last.dy / zoom)}`, 'move').then(() => select([id])); }
   });
 }
 

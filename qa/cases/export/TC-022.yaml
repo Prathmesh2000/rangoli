@@ -1,0 +1,16 @@
+id: TC-022
+feature: export
+title: Export to a missing folder returns a readable error
+priority: P2
+level: integration
+technique: error guessing
+tags:
+  - regression
+covers:
+  - AC-10
+steps:
+  - Call export with outFile inside a folder that does not exist
+expected:
+  - The tool returns an error naming the path
+  - The server keeps responding to later calls
+automation: {}

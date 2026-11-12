@@ -1,0 +1,5 @@
+id: smoke
+description: Fast check that the main journeys work
+select:
+  tags_any:
+    - smoke

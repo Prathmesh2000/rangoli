@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import { diffDocuments, emptyReviews, previewScript, RangoliDocument, type DocDiff, type DocumentData, type LintIssue, type ReviewData } from '@rangoli/engine';
+import { recordChange } from './changeFeed';
+import { copyForChange } from './docCopy';
+import { diffDocuments, emptyReviews, opScope, previewScript, RangoliDocument, type ChangeEntry, type DocDiff, type DocumentData, type LintIssue, type Page, type ReviewData, asSkin, type Skin } from '@rangoli/engine';
 
 export type Role = 'owner' | 'editor' | 'reviewer' | 'viewer';
 export interface PresenceItem {
@@ -15,7 +17,7 @@ export interface Compare {
   diff: DocDiff;
   changeset?: string;
 }
-export type RightTab = 'inspect' | 'review' | 'tokens' | 'lint';
+export type RightTab = 'inspect' | 'review' | 'tokens' | 'lint' | 'notes';
 
 export interface HistoryItem {
   seq: number;
@@ -32,7 +34,13 @@ export interface EditorState {
   history: HistoryItem[];
   selection: string[];
   hover: string | null;
-  mode: 'light' | 'dark';
+  /** light, dark or a custom theme id */
+  mode: string;
+  leftTab: 'layers' | 'add';
+  /** the Run overlay is open */
+  running: boolean;
+  /** bumps to focus the Add panel's search */
+  addFocus: number;
   zoom: number;
   connected: boolean;
   /** last agent activity timestamp, for the "agent is working" indicator */
@@ -41,9 +49,23 @@ export interface EditorState {
   lint: LintIssue[];
   /** bumps on every document change so memoized views recompute */
   version: number;
+  /** pages present in `doc`; null when the whole document was loaded */
+  loadedPages: string[] | null;
   /** bump to ask the canvas to zoom-to-fit */
   fitRequest: number;
   role: Role;
+  /** what this person may do in this design, as capabilities from the server (packages/engine/src/capabilities.ts) */
+  can: string[];
+  /** other people's pointers, in canvas coordinates */
+  cursors: Record<string, { name: string; x: number; y: number; at: number }>;
+  /** how frames are drawn: full design, clean wireframe or hand-drawn sketch */
+  skin: Skin;
+  /** twelve-column overlay on top-level frames */
+  layoutGrid: boolean;
+  /** why the canvas is read-only right now (team app only) */
+  locked: string | null;
+  /** opened from the team app: where "back" goes */
+  hosted: { projectId: string; projectName: string; stage: string } | null;
   agentMode: 'direct' | 'suggest';
   presence: PresenceItem[];
   reviews: ReviewData;
@@ -51,7 +73,7 @@ export interface EditorState {
   rightTab: RightTab;
   focusThread: string | null;
   myName: string;
-  view: 'design' | 'icons' | 'images';
+  view: 'design' | 'icons' | 'images' | '3d';
   imageSel: { kind: 'asset' | 'comp'; id: string } | null;
   /** selected icon "set/name" in Icon Studio */
   iconSel: string | null;
@@ -59,9 +81,15 @@ export interface EditorState {
   iconDraft: string | null;
   /** canvas tool */
   tool: Tool;
+  /** the page shown on the canvas; null is the document's first page */
+  activePage: string | null;
 }
 
 export type Tool = 'select' | 'frame' | 'rect' | 'ellipse' | 'line' | 'pen' | 'text';
+
+/** '' for the local tool; /d/<project> when opened from the team app. */
+let apiBase = '';
+export const api = (path: string): string => apiBase + path;
 
 let state: EditorState = {
   doc: null,
@@ -70,15 +98,25 @@ let state: EditorState = {
   history: [],
   selection: [],
   hover: null,
-  mode: (localStorageGet('rangoli.mode') as 'light' | 'dark') ?? 'light',
+  mode: localStorageGet('rangoli.mode') ?? 'light',
+  leftTab: 'layers',
+  running: false,
+  addFocus: 0,
   zoom: 1,
   connected: false,
   agentActiveAt: 0,
   toast: null,
   lint: [],
   version: 0,
+  loadedPages: null,
   fitRequest: 0,
   role: 'viewer',
+  can: [],
+  locked: null,
+  hosted: null,
+  skin: asSkin(localStorageGet('rangoli.skin')),
+  layoutGrid: false,
+  cursors: {},
   agentMode: 'direct',
   presence: [],
   reviews: emptyReviews(),
@@ -86,18 +124,19 @@ let state: EditorState = {
   rightTab: 'inspect',
   focusThread: null,
   myName: localStorageGet('rangoli.name') ?? '',
-  view: (['icons', 'images'] as const).find((v) => v === localStorageGet('rangoli.view')) ?? 'design',
+  view: (['icons', 'images', '3d'] as const).find((v) => v === localStorageGet('rangoli.view')) ?? 'design',
   imageSel: null,
   iconSel: null,
   iconDraft: null,
   tool: 'select',
+  activePage: null,
 };
 
 export function setTool(tool: Tool): void {
   setState({ tool });
 }
 
-export function setView(view: 'design' | 'icons' | 'images'): void {
+export function setView(view: 'design' | 'icons' | 'images' | '3d'): void {
   localStorageSet('rangoli.view', view);
   setState({ view });
 }
@@ -151,30 +190,31 @@ export function localStorageSet(k: string, v: string): void {
 const headers = () => ({ 'content-type': 'application/json', ...(state.myName ? { 'x-rangoli-name': state.myName } : {}) });
 
 async function post<T = unknown>(path: string, body: unknown = {}): Promise<{ ok: boolean; data: T & { error?: string } }> {
-  const res = await fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+  const res = await fetch(api(path), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) toast('error', data.error ?? `Request failed (${res.status})`);
   return { ok: res.ok, data };
 }
 
 async function fetchDoc(): Promise<void> {
-  const res = await fetch('/api/doc', { cache: 'no-store' });
-  const body = (await res.json()) as { data: DocumentData; dir: string; seq: number; history: HistoryItem[]; selection: string[]; role: Role; agentMode: 'direct' | 'suggest'; presence: PresenceItem[] };
+  const res = await fetch(api('/api/doc?page=active'), { cache: 'no-store' });
+  const body = (await res.json()) as { data: DocumentData; loadedPages?: string[] | null; dir: string; seq: number; history: HistoryItem[]; selection: string[]; role: Role; can?: string[]; agentMode: 'direct' | 'suggest'; presence: PresenceItem[]; locked?: string | null };
   const doc = new RangoliDocument(body.data);
   // drop selection of nodes that no longer exist
   const selection = state.selection.filter((id) => doc.findNode(id));
-  setState({ doc, dir: body.dir, seq: body.seq, history: body.history, selection, version: state.version + 1, role: body.role, agentMode: body.agentMode, presence: body.presence });
+  recordChange(state.version + 1, null); // a whole new document: the canvas diffs every frame
+  setState({ doc, loadedPages: body.loadedPages ?? null, dir: body.dir, seq: body.seq, history: body.history, selection, version: state.version + 1, role: body.role, can: body.can ?? [], agentMode: body.agentMode, presence: body.presence, locked: body.locked ?? null });
   void refreshLint();
 }
 
 async function fetchReviews(): Promise<void> {
-  const res = await fetch('/api/reviews', { cache: 'no-store' });
+  const res = await fetch(api('/api/reviews'), { cache: 'no-store' });
   if (res.ok) setState({ reviews: (await res.json()) as ReviewData });
 }
 
 async function refreshLint(): Promise<void> {
   try {
-    const res = await fetch('/api/lint', { cache: 'no-store' });
+    const res = await fetch(api('/api/lint'), { cache: 'no-store' });
     setState({ lint: (await res.json()) as LintIssue[] });
   } catch {
     /* ignore */
@@ -187,23 +227,104 @@ function scheduleRefetch() {
   refetchTimer = window.setTimeout(() => void fetchDoc(), 16);
 }
 
+let lintTimer: number | undefined;
+function scheduleLint() {
+  window.clearTimeout(lintTimer);
+  lintTimer = window.setTimeout(() => void refreshLint(), 400);
+}
+
+/**
+ * Apply a committed change without refetching the document. True when it was applied, false when the caller
+ * must refetch (out of order, or a change this client cannot apply). The data is copied, because earlier
+ * views (compare, memoized panels) still hold the previous objects.
+ */
+function applyCommitted(entry: ChangeEntry): boolean {
+  const current = state.doc;
+  if (!current || entry.seq !== state.seq + 1 || state.compare) return false;
+  try {
+    const loaded = state.loadedPages;
+    const ops = entry.ops.filter((op) => !loaded || opScope(op) === '' || loaded.includes(opScope(op)));
+    // copy only what these ops write; the rest is shared with the previous version, which nobody mutates
+    const doc = new RangoliDocument(copyForChange(current.data, ops, entry.touched));
+    doc.applyCommitted({ ...entry, ops });
+    const selection = state.selection.filter((id) => doc.findNode(id));
+    const history = entry.undoOf !== undefined ? state.history.filter((h) => h.seq !== entry.undoOf) : entry.noHistory ? state.history : [...state.history, { seq: entry.seq, author: entry.author, label: entry.label ?? null, time: entry.time, touched: entry.touched.length }].slice(-50);
+    recordChange(state.version + 1, entry.touched); // the canvas re-renders only the frames these reach
+    setState({ doc, seq: entry.seq, history, selection, version: state.version + 1 });
+    scheduleLint();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Bring one more page into a partially loaded document. */
+export async function loadPage(pageId: string): Promise<void> {
+  const current = state.doc;
+  if (!current || !state.loadedPages || state.loadedPages.includes(pageId)) return;
+  const res = await fetch(api(`/api/pages/${encodeURIComponent(pageId)}`), { cache: 'no-store' });
+  if (!res.ok) return toast('error', 'That page could not be loaded');
+  const { page } = (await res.json()) as { page: Page; seq: number };
+  const data = structuredClone(current.data);
+  data.pages[pageId] = page;
+  recordChange(state.version + 1, null);
+  setState({ doc: new RangoliDocument(data), loadedPages: [...state.loadedPages, pageId], version: state.version + 1 });
+}
+
+/** The page on the canvas (undefined: the document's first page, which RDL edits by default). */
+export function activePageId(): string | undefined {
+  const s = state;
+  return s.activePage && s.doc && Object.hasOwn(s.doc.data.pages, s.activePage) ? s.activePage : undefined;
+}
+
+/**
+ * Show another page. Pages other than the first load on demand (per-page loading). Editing them needs the
+ * server to accept a page on /api/rdl, which it does not yet, so they open read-only (see canEdit).
+ */
+export async function setActivePage(pageId: string): Promise<void> {
+  const doc = state.doc;
+  if (!doc || !Object.hasOwn(doc.data.pages, pageId)) return;
+  const first = doc.data.manifest.pages[0]?.id;
+  if (state.loadedPages && !state.loadedPages.includes(pageId)) await loadPage(pageId);
+  setState({ activePage: pageId === first ? null : pageId, selection: [], hover: null, fitRequest: state.fitRequest + 1 });
+}
+
+/** Point the editor at one project of the team app, leaving nothing behind from the previous one. */
+export function openHosted(hosted: EditorState['hosted'], name: string): void {
+  apiBase = hosted ? `/d/${hosted.projectId}` : '';
+  setState({ skin: hosted?.stage === 'wireframes' ? 'clean' : 'none', hosted, myName: name, doc: null, seq: 0, loadedPages: null, activePage: null, selection: [], history: [], reviews: emptyReviews(), compare: null, lint: [], presence: [], locked: null, imageSel: null, iconSel: null, iconDraft: null });
+}
+
 export function connect(): () => void {
   void fetchDoc();
   void fetchReviews();
-  const es = new EventSource(`/events?client=${clientId}&name=${encodeURIComponent(state.myName)}`);
+  const es = new EventSource(`${apiBase}/events?client=${clientId}&name=${encodeURIComponent(state.myName)}`);
   es.addEventListener('reviews', () => void fetchReviews());
+  es.addEventListener('journey', () => void fetchDoc());
+  es.addEventListener('cursor', (ev) => {
+    const c = JSON.parse((ev as MessageEvent<string>).data) as { clientId: string; name?: string; x?: number; y?: number; leave?: boolean };
+    if (c.clientId === clientId) return;
+    const cursors = { ...state.cursors };
+    if (c.leave) delete cursors[c.clientId];
+    else cursors[c.clientId] = { name: c.name ?? '', x: c.x ?? 0, y: c.y ?? 0, at: Date.now() };
+    setState({ cursors });
+  });
   es.addEventListener('presence', (ev) => setState({ presence: JSON.parse((ev as MessageEvent<string>).data) as PresenceItem[] }));
   es.addEventListener('mode', (ev) => setState({ agentMode: JSON.parse((ev as MessageEvent<string>).data) as 'direct' | 'suggest' }));
   es.onopen = () => setState({ connected: true });
   es.onerror = () => setState({ connected: false });
   es.addEventListener('doc', (ev) => {
-    const e = JSON.parse((ev as MessageEvent<string>).data) as { author: string };
+    const e = JSON.parse((ev as MessageEvent<string>).data) as ChangeEntry;
     if (e.author.startsWith('agent')) setState({ agentActiveAt: Date.now() });
-    scheduleRefetch();
+    if (e.seq <= state.seq && e.ops) return; // already in the document we fetched
+    if (!e.ops || !applyCommitted(e)) scheduleRefetch();
   });
   es.addEventListener('selection', (ev) => {
-    // selection from another client (e.g. preview tab) — adopt it
-    const ids = JSON.parse((ev as MessageEvent<string>).data) as string[];
+    // Selection is per client. The server broadcasts one shared selection without saying whose it is, so it
+    // is adopted only when nobody else is here: then it can only come from this person's preview tab.
+    // Other people's selections arrive through presence and never replace this one.
+    if (state.presence.some((p) => p.clientId !== clientId && p.role !== 'agent')) return;
+    const ids = (JSON.parse((ev as MessageEvent<string>).data) as string[]).filter((id) => !state.doc || state.doc.findNode(id));
     if (JSON.stringify(ids) !== JSON.stringify(state.selection)) setState({ selection: ids });
   });
   return () => es.close();
@@ -240,20 +361,26 @@ export function select(ids: string[]): void {
   setState({ selection: ids });
   window.clearTimeout(selectTimer);
   selectTimer = window.setTimeout(() => {
-    void fetch('/select', { method: 'POST', headers: headers(), body: JSON.stringify({ ids }) });
-    void fetch('/api/presence', { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, name: state.myName, selection: ids }) });
+    void fetch(api('/select'), { method: 'POST', headers: headers(), body: JSON.stringify({ ids }) });
+    void fetch(api('/api/presence'), { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, name: state.myName, selection: ids }) });
   }, 60);
 }
 
 // ---------------------------------------------------------------- review actions
 
-export const canEdit = () => state.role === 'owner' || state.role === 'editor';
-export const canReview = () => state.role !== 'viewer';
+/** Capability checks; the server decides the same way, so these only shape the interface. */
+export const can = (capability: string) => state.can.includes(capability);
+/** Edits go through RDL, which the server applies to the first page: other pages stay read-only for now. */
+export const canEdit = () => can('design.edit') && !activePageId();
+export const canReview = () => can('comment');
+export const canAcceptSuggestions = () => can('suggestion.accept');
+/** who works here and how agents write: the project lead, or the person at the machine running Rangoli */
+export const canManage = () => can('members.manage');
 
 export function setMyName(name: string): void {
   localStorageSet('rangoli.name', name);
   setState({ myName: name });
-  void fetch('/api/presence', { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, name, selection: state.selection }) });
+  void fetch(api('/api/presence'), { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, name, selection: state.selection }) });
 }
 
 export function setRightTab(tab: RightTab, focusThread: string | null = null): void {
@@ -262,6 +389,46 @@ export function setRightTab(tab: RightTab, focusThread: string | null = null): v
 
 export async function setAgentMode(mode: 'direct' | 'suggest'): Promise<void> {
   await post('/api/mode', { mode });
+}
+
+let cursorSent = 0;
+/** Only worth sending when someone else is here to see it. */
+export function sendCursor(x: number, y: number): void {
+  const now = Date.now();
+  if (now - cursorSent < 100 || !state.presence.some((p) => p.clientId !== clientId && p.role !== 'agent')) return;
+  cursorSent = now;
+  void fetch(api('/api/cursor'), { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, x: Math.round(x), y: Math.round(y) }) });
+}
+export function leaveCursor(): void {
+  if (cursorSent) void fetch(api('/api/cursor'), { method: 'POST', headers: headers(), body: JSON.stringify({ clientId, leave: true }) });
+  cursorSent = 0;
+}
+
+const asDataUrl = (f: File) => new Promise<string>((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => fail(new Error('Could not read that file')); r.readAsDataURL(f); });
+
+/** Queue work for the connected agent. Throws so the dialog can show why it failed. */
+export async function askAgent(prompt: string, file: File | null, device: string): Promise<void> {
+  const send = async <T,>(path: string, body: unknown) => {
+    const res = await fetch(api(path), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(data.error ?? 'That did not work. Try again.');
+    return data;
+  };
+  const asset = file ? (await send<{ id: string }>('/api/assets', { name: file.name, dataUrl: await asDataUrl(file) })).id : undefined;
+  await send('/api/agent-requests', { prompt, asset, device });
+}
+
+export async function cancelAgentRequest(id: string): Promise<void> {
+  await post(`/api/agent-requests/${id}/cancel`);
+}
+
+export function setSkin(skin: Skin): void {
+  localStorageSet('rangoli.skin', skin);
+  setState({ skin });
+}
+
+export async function addAnnotation(node: string, body: string): Promise<void> {
+  await post('/api/threads', { node, body, kind: 'annotation' });
 }
 
 export async function addThread(node: string | null, body: string): Promise<void> {
@@ -304,7 +471,7 @@ export function compareChangeset(id: string): void {
 
 export async function compareVersion(id: string): Promise<void> {
   if (!state.doc) return;
-  const res = await fetch(`/api/versions/${id}`);
+  const res = await fetch(api(`/api/versions/${id}`));
   if (!res.ok) return toast('error', `Cannot load ${id}`);
   const before = new RangoliDocument((await res.json()) as DocumentData);
   const v = state.reviews.versions.find((x) => x.id === id);
@@ -319,7 +486,7 @@ export function clearCompare(): void {
 export function authorLabel(author: string): string {
   if (author.startsWith('agent')) return 'Agent';
   if (author === 'human') return 'You';
-  const m = /^human:([^ ]+)(?: \(accepted (.+)\))?$/.exec(author) ?? /^human \(accepted (.+)\)$/.exec(author);
+  const m = /^human:(.+?)(?: \(accepted (.+)\))?$/.exec(author) ?? /^human \(accepted (.+)\)$/.exec(author);
   if (!m) return author;
   const who = author.startsWith('human:') ? (m[1] === state.myName ? 'You' : m[1]!) : 'You';
   const accepted = author.startsWith('human:') ? m[2] : m[1];
@@ -330,7 +497,11 @@ export function setHover(id: string | null): void {
   if (state.hover !== id) setState({ hover: id });
 }
 
-export function setMode(mode: 'light' | 'dark'): void {
+export function openAddPanel(): void {
+  setState({ leftTab: 'add', addFocus: state.addFocus + 1 });
+}
+
+export function setMode(mode: string): void {
   localStorageSet('rangoli.mode', mode);
   setState({ mode });
 }

@@ -1,5 +1,35 @@
 import { memo, useState } from 'react';
-import { rdl, select, setHover, useEditor, getState } from './store';
+import { canEdit, rdl, select, setHover, useEditor, getState } from './store';
+
+/** Drag a layer row: upper/lower edge = before/after, middle of a container row = inside it. */
+function startRowDrag(e: React.PointerEvent, id: string) {
+  const sy = e.clientY;
+  let line: HTMLDivElement | null = null;
+  let drop: string | null = null;
+  const doc = getState().doc!;
+  const inside = (t: string) => { for (let c: string | undefined = t; c; c = doc.findNode(c)?.node.parent) if (c === id) return true; return false; };
+  const mv = (ev: PointerEvent) => {
+    if (!line && Math.abs(ev.clientY - sy) < 5) return;
+    if (!line) { line = document.createElement('div'); line.className = 'dnd-line'; document.body.appendChild(line); }
+    const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>('[data-layer]');
+    const t = row?.dataset.layer;
+    if (!row || !t || inside(t)) { line.style.display = 'none'; drop = null; return; }
+    const r = row.getBoundingClientRect(), f = (ev.clientY - r.top) / r.height;
+    const n = doc.findNode(t)!.node;
+    const into = f > 0.3 && f < 0.7 && (n.type === 'frame' || n.type === 'group');
+    if (!n.parent && !into) { line.style.display = 'none'; drop = null; return; }
+    drop = into ? `into #${t} end` : f < 0.5 ? `before #${t}` : `after #${t}`;
+    Object.assign(line.style, into ? { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, opacity: '.3' } : { display: 'block', left: `${r.left}px`, top: `${f < 0.5 ? r.top - 1 : r.bottom - 1}px`, width: `${r.width}px`, height: '2px', opacity: '1' });
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', mv);
+    window.removeEventListener('pointerup', up);
+    line?.remove();
+    if (drop) void rdl(`move #${id} ${drop}`, 'reorder');
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', up);
+}
 import { TYPE_GLYPH } from './helpers';
 
 export function Layers() {
@@ -35,6 +65,8 @@ const LayerRow = memo(function LayerRow({ id, depth, version }: { id: string; de
         aria-expanded={kids.length ? open : undefined}
         className={`layer${selected ? ' is-sel' : ''}${hovered ? ' is-hover' : ''}${node.hidden ? ' is-hidden' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
+        data-layer={id}
+        onPointerDown={(e) => { if (e.button === 0 && canEdit() && !editing && node.parent) startRowDrag(e, id); }}
         onMouseEnter={() => setHover(id)}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => {

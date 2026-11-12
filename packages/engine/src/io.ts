@@ -60,3 +60,11 @@ export async function loadDocument(dir: string): Promise<RangoliDocument> {
   const data: DocumentData = { manifest, tokens, components, pages, motion, prototype: { ...prototype, interactions: prototype.interactions ?? {} }, timelines: timelines ?? {}, icons, assets: await read<Record<string, AssetMeta>>('assets.json', {}) };
   return new RangoliDocument(data);
 }
+
+/** Bring a document stored as a single JSON value up to date, the same way loadDocument does for folders. */
+export function hydrateDocument(stored: DocumentData): RangoliDocument {
+  const icons = stored.icons ?? defaultIcons();
+  const starter = defaultIcons().ui!;
+  if (icons.ui) for (const [name, ic] of Object.entries(starter.icons)) icons.ui.icons[name] ??= ic;
+  return new RangoliDocument({ ...stored, tokens: upgradeTokens(stored.tokens), components: withLibrary(stored.components), motion: stored.motion ?? defaultMotion(), icons });
+}

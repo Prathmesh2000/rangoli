@@ -1,0 +1,19 @@
+id: TC-002
+feature: export
+title: Layer JavaScript appears only when scripts are enabled
+priority: P1
+level: unit
+tags:
+  - smoke
+  - regression
+  - security
+covers:
+  - AC-2
+steps:
+  - Render a document whose layer has a script, with the default options
+  - "Render it again with scripts: true"
+expected:
+  - First output does not contain the layer script
+  - Second output contains the layer script
+automation:
+  node: packages/engine/src/expression.test.ts#round-trips, bundles with el bound, and only ships when asked

@@ -50,7 +50,16 @@ export interface Position {
   y: number;
 }
 
-export type Paint = TokenRef | { hex: string } | { gradient: { type: 'linear' | 'radial'; angle?: number; stops: { at: number; color: TokenRef | { hex: string } }[] } };
+export type Paint = TokenRef | { hex: string } | { gradient: { type: 'linear' | 'radial'; angle?: number; stops: { at: number; color: TokenRef | { hex: string } }[] } } | { image: ImagePaint };
+
+/** Background image: an uploaded asset or an https URL, with an optional colour tint over it. */
+export interface ImagePaint {
+  asset?: string;
+  url?: string;
+  fit: 'cover' | 'contain' | 'tile';
+  pos?: string;
+  tint?: TokenRef | { hex: string };
+}
 
 export interface Stroke {
   paint: Paint;
@@ -149,6 +158,8 @@ export interface RNode {
   variant?: Record<string, string>;
   props?: Record<string, string | number | boolean>;
   hidden?: boolean;
+  /** JavaScript for this layer; runs with `el` bound to it on exported and Run pages, never inside the editor */
+  script?: string;
   /** absolutely positioned inside its parent (uses position x/y) — overlays, badges, drawings */
   absolute?: boolean;
   locked?: boolean;

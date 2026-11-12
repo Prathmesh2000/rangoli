@@ -1,0 +1,16 @@
+id: TC-021
+feature: export
+title: Export permission follows the role matrix
+priority: P1
+level: unit
+tags:
+  - regression
+  - security
+covers:
+  - AC-9
+steps:
+  - Check export.run for each role in the capability matrix
+expected:
+  - Each role has or lacks export.run exactly as the matrix states
+automation:
+  node: packages/engine/src/capabilities.test.ts#export.run

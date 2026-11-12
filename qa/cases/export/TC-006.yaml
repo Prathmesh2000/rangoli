@@ -1,0 +1,18 @@
+id: TC-006
+feature: export
+title: Prototype variables are escaped into the player
+priority: P1
+level: unit
+tags:
+  - regression
+  - security
+covers:
+  - AC-3
+  - AC-6
+steps:
+  - Build a prototype that has variables
+expected:
+  - Variables ship in the player with their values escaped
+automation:
+  node: packages/engine/src/prototype-logic.test.ts#ships variables and escapes
+    them into the player

@@ -212,6 +212,31 @@ export const LANGUAGES: Record<string, DesignLanguage> = {
       inkBorders: true, controlShadow: ['3px 3px 0 #111111', '3px 3px 0 #f2f2f2'],
     },
   },
+  web3: {
+    id: 'web3', name: 'Web3',
+    feel: 'Technical and luminous — geometric display type, mono details, soft pills, glowing elevation.',
+    bestFor: 'dApps, protocols, NFT drops and crypto landing pages. Pair with the Neon or Midnight theme.',
+    options: {
+      brand: '#0ea47a',
+      fontSans: ['Inter', ...SYSTEM_SANS],
+      fontDisplay: ['Space Grotesk', 'Inter', ...SYSTEM_SANS],
+      fontMono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
+      radius: [6, 10, 14, 18, 24], radiusControl: '4', radiusCard: '4',
+      controls: { xs: 24, sm: 34, md: 40, lg: 48 },
+      type: {
+        label: { size: 14, line: 20, weight: 600 },
+        title: { size: 22, line: 28, weight: 600, tracking: '-0.01em' },
+        headline: { size: 32, line: 38, weight: 600, tracking: '-0.02em' },
+        display: { size: 56, line: 60, weight: 600, tracking: '-0.03em' },
+      },
+      shadows: {
+        sm: ['0 1px 3px rgba(14,164,122,.14)', '0 0 12px rgba(34,230,168,.14)'],
+        md: ['0 6px 20px -4px rgba(14,164,122,.22)', '0 0 28px rgba(34,230,168,.2)'],
+        lg: ['0 18px 48px -8px rgba(14,164,122,.3)', '0 0 60px rgba(34,230,168,.28)'],
+      },
+      easeOut: [0.16, 1, 0.3, 1], motionSpeed: 1.1,
+    },
+  },
   dense: {
     id: 'dense', name: 'Dense data',
     feel: 'Maximum information per pixel — 28px controls, 13px body, tight radii; for experts who live in the tool.',
@@ -279,3 +304,8 @@ export function upgradeTokens(tree: TokenTree): TokenTree {
   fill(tree as Record<string, unknown>, fresh as Record<string, unknown>);
   return tree;
 }
+
+export * from './fonts.js';
+export * from './themes.js';
+export * from './scene3d.js';
+export * from './icons-svg.js';

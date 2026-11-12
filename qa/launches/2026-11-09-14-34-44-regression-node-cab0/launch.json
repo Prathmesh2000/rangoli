@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "id": "2026-11-09-14-34-44-regression-node-cab0",
+  "suite": "regression",
+  "platform": "node",
+  "environment": "local",
+  "commit": "889590f",
+  "dirty": true,
+  "startedAt": "2026-11-09T14:34:44.955Z",
+  "finishedAt": null,
+  "status": "open",
+  "outcome": null,
+  "summary": {
+    "total": 23,
+    "passed": 16,
+    "failed": 1,
+    "skipped": 0,
+    "blocked": 0,
+    "not_run": 6
+  },
+  "notes": [],
+  "results": [
+    {
+      "case": "TC-001",
+      "title": "Standalone HTML includes tokens, dark mode, reduced motion and states",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 32
+    },
+    {
+      "case": "TC-002",
+      "title": "Layer JavaScript appears only when scripts are enabled",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 12
+    },
+    {
+      "case": "TC-003",
+      "title": "Text content is escaped in rendered output",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 3
+    },
+    {
+      "case": "TC-004",
+      "title": "Malicious stored values are dropped when rendering",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 8
+    },
+    {
+      "case": "TC-005",
+      "title": "Paint values never emit raw document strings",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 1
+    },
+    {
+      "case": "TC-006",
+      "title": "Prototype variables are escaped into the player",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 23
+    },
+    {
+      "case": "TC-007",
+      "title": "Token export writes CSS variables with a dark-mode block",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 7
+    },
+    {
+      "case": "TC-008",
+      "title": "tokens-json export writes parseable JSON matching the tokens",
+      "priority": "P2",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    },
+    {
+      "case": "TC-009",
+      "title": "Motion export emits transitions, keyframes and reduced variants",
+      "priority": "P2",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 9
+    },
+    {
+      "case": "TC-010",
+      "title": "Standalone render keeps motion with no global reduced-motion switch",
+      "priority": "P2",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 30
+    },
+    {
+      "case": "TC-011",
+      "title": "Motion export works through the server tools",
+      "priority": "P2",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 119
+    },
+    {
+      "case": "TC-012",
+      "title": "Prototype export builds a standalone page",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 64
+    },
+    {
+      "case": "TC-013",
+      "title": "Prototype timelines export as class-triggered keyframes",
+      "priority": "P2",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 36
+    },
+    {
+      "case": "TC-014",
+      "title": "Prototype export and playback work through the server",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 8601
+    },
+    {
+      "case": "TC-015",
+      "title": "Icons export as SVG, React and sprite",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 7
+    },
+    {
+      "case": "TC-016",
+      "title": "Icon export works through the server tools",
+      "priority": "P2",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 18414
+    },
+    {
+      "case": "TC-017",
+      "title": "Icon export names an unknown set in its error",
+      "priority": "P3",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    },
+    {
+      "case": "TC-018",
+      "title": "Sprite export writes one file named after the set",
+      "priority": "P3",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    },
+    {
+      "case": "TC-019",
+      "title": "Frame composition exports through the server",
+      "priority": "P2",
+      "status": "failed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 4674,
+      "message": "fetch failed",
+      "failedTest": "MCP end-to-end (real stdio process) > images: upload, edit to webp, use with alt lint, compose + export, served safely"
+    },
+    {
+      "case": "TC-020",
+      "title": "Image export accepts scales 1 and 3 and rejects 0 and 4",
+      "priority": "P2",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    },
+    {
+      "case": "TC-021",
+      "title": "Export permission follows the role matrix",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 7,
+      "durationMs": 1
+    },
+    {
+      "case": "TC-022",
+      "title": "Export to a missing folder returns a readable error",
+      "priority": "P2",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    },
+    {
+      "case": "TC-023",
+      "title": "Editor download gets a usable file name for non-English titles",
+      "priority": "P3",
+      "status": "not_run",
+      "source": "none",
+      "reason": "No automation for node; needs a manual result"
+    }
+  ],
+  "runner": {
+    "command": "npx vitest run --reporter=junit --outputFile=\"qa/launches/2026-11-09-14-34-44-regression-node-cab0/evidence/junit.xml\" \"packages/engine/src/render-lint.test.ts\" \"packages/engine/src/expression.test.ts\" \"packages/engine/src/security.test.ts\" \"packages/engine/src/prototype-logic.test.ts\" \"packages/engine/src/tokens.test.ts\" \"packages/engine/src/motion.test.ts\" \"packages/server/src/e2e.test.ts\" \"packages/engine/src/prototype.test.ts\" \"packages/engine/src/icons.test.ts\" \"packages/engine/src/capabilities.test.ts\"",
+    "exitCode": 1,
+    "testsReported": 281,
+    "problems": [],
+    "unlinkedFailures": [
+      "agents > can never hold the forbidden capabilities, whatever the person, scope or work",
+      "MCP end-to-end (real stdio process) > agent designs a screen, gets lint feedback, fixes it, previews it",
+      "MCP end-to-end (real stdio process) > collaboration: suggest mode, accept/reject, inbox, review pins, versions + diff"
+    ]
+  }
+}

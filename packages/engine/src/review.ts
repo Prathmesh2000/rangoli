@@ -21,7 +21,8 @@ export interface Thread {
   id: string;
   /** anchored node (may be deleted later — thread stays, marked orphaned in UI) */
   node: string | null;
-  kind: 'comment' | 'review';
+  /** annotation: a numbered spec note. It documents the design rather than asking for a change. */
+  kind: 'comment' | 'review' | 'annotation';
   severity?: Severity;
   /** ready-to-apply RDL fix (review findings) */
   fix?: string;
@@ -54,13 +55,30 @@ export interface VersionMeta {
   seq: number;
 }
 
+/** Work queued in the app for whichever AI agent is connected over MCP. */
+export interface AgentRequest {
+  id: string;
+  author: string;
+  prompt: string;
+  /** a screenshot or sketch to work from */
+  asset?: string;
+  device: 'desktop' | 'tablet' | 'mobile';
+  /** the planned screen this builds, in the team app */
+  screen?: { id: string; name: string };
+  status: 'pending' | 'working' | 'done' | 'failed' | 'cancelled';
+  frame?: string;
+  note?: string;
+  time: number;
+}
+
 export interface ReviewData {
   threads: Thread[];
   changesets: ChangeSet[];
   versions: VersionMeta[];
+  requests: AgentRequest[];
 }
 
-export const emptyReviews = (): ReviewData => ({ threads: [], changesets: [], versions: [] });
+export const emptyReviews = (): ReviewData => ({ threads: [], changesets: [], versions: [], requests: [] });
 
 /** Deep copy of a document (for previews and snapshots). */
 export function cloneDocument(doc: RangoliDocument | DocumentData): RangoliDocument {

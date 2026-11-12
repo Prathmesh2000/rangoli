@@ -34,7 +34,7 @@ const SEV_ORDER: Record<Severity, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] {
   const page = doc.page(opts.page);
   const tokens = new TokenResolver(doc.data.tokens);
-  const modes = opts.modes ?? ['light', 'dark'];
+  const modes = opts.modes ?? ['light', 'dark', ...Object.keys(tokens.themes)];
   const issues: LintIssue[] = [];
   const add = (i: LintIssue) => issues.push(i);
 
@@ -63,6 +63,7 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
       return undefined;
     };
     if ('gradient' in p) return p.gradient.stops.map((s) => one(s.color)).filter((t): t is Tint => !!t);
+    if ('image' in p) return p.image.tint ? [one(p.image.tint)!].filter(Boolean) : [];
     const t = one(p);
     return t ? [t] : [];
   };
@@ -281,10 +282,13 @@ export function lint(doc: RangoliDocument, opts: LintOptions = {}): LintIssue[] 
 
   // prototype rules (P*) — whole-page lint only
   if (!opts.roots) {
+    const allInteractions = Object.values(doc.data.prototype?.interactions ?? {}).flat();
+    const knownVars = new Set([...Object.keys(doc.data.prototype?.variables ?? {}), ...allInteractions.flatMap((i) => (i.action === 'set' ? Object.keys(i.variant ?? {}) : i.variable ? [i.variable] : []))]);
     for (const [node, list] of Object.entries(doc.data.prototype?.interactions ?? {})) {
       const n = page.nodes[node];
       if (!n) continue;
       for (const it of list) {
+        for (const c of it.when ?? []) if (!knownVars.has(c.name)) add({ code: 'P04', severity: 'P2', node, message: `condition uses "${c.name}", which no interaction sets. Declare it with: proto var ${c.name}=value` });
         if (it.target && !page.nodes[it.target]) add({ code: 'P01', severity: 'P0', node, message: `${it.trigger} → ${it.action} targets #${it.target}, which no longer exists`, fix: `proto #${node} none` });
         if (it.action === 'play' && it.timeline && !doc.data.timelines?.[it.timeline]) add({ code: 'P01', severity: 'P0', node, message: `plays missing timeline "${it.timeline}"` });
       }

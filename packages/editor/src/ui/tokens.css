@@ -1,0 +1,211 @@
+/* Rangoli design tokens. Source of truth: docs/design/direction.md.
+   tokens.test.ts checks every colour role below against that file. */
+
+:root {
+  /* Type. Instrument Sans and JetBrains Mono are self-hosted later; the stacks hold until then. */
+  --rg-font-sans: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --rg-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --rg-weight-regular: 400;
+  --rg-weight-medium: 500;
+  --rg-weight-semibold: 600;
+  /* size/line-height pairs, for the font shorthand. 12 is the floor. */
+  --rg-type-12: 12px/16px;
+  --rg-type-13: 13px/18px;
+  --rg-type-14: 14px/20px;
+  --rg-type-16: 16px/24px;
+  --rg-type-20: 20px/28px;
+  --rg-type-24: 24px/32px;
+  --rg-type-28: 28px/36px;
+  --rg-type-36: 36px/44px;
+  --rg-track-heading: -0.015em; /* headings 24 and up */
+
+  /* Space */
+  --rg-space-4: 4px;
+  --rg-space-8: 8px;
+  --rg-space-12: 12px;
+  --rg-space-16: 16px;
+  --rg-space-20: 20px;
+  --rg-space-24: 24px;
+  --rg-space-32: 32px;
+  --rg-space-40: 40px;
+  --rg-space-48: 48px;
+  --rg-space-64: 64px;
+
+  /* Radius. Frames keep the user's corners. */
+  --rg-radius-inner: 6px;
+  --rg-radius-control: 8px;
+  --rg-radius-panel: 12px;
+  --rg-radius-sheet: 14px;
+  --rg-radius-full: 9999px;
+
+  /* Shell and targets */
+  --rg-target-min: 24px;
+  --rg-rail: 84px;
+  --rg-rail-expanded: 232px;
+  --rg-z-popover: 50;
+  --rg-z-sheet: 60;
+  --rg-z-menu: 70;
+  --rg-z-toast: 75;
+  --rg-z-tooltip: 80;
+
+  /* Canvas selection is fixed in both themes, because the frames are the user's. */
+  --rg-canvas-selection: #BD1560;
+  --rg-canvas-keyline: #FFFFFF;
+
+  /* Motion. Only transform and opacity animate, plus the kolam stroke. */
+  --rg-dur-keyboard: 0ms;
+  --rg-dur-hover: 120ms;
+  --rg-dur-popover: 200ms;
+  --rg-dur-panel: 240ms;
+  --rg-dur-seal-wash: 480ms;
+  --rg-dur-kolam: 640ms;
+  --rg-ease-out: cubic-bezier(.2, 0, 0, 1);
+  --rg-ease-sheet: cubic-bezier(.32, .72, 0, 1);
+}
+
+/* Reduced motion shows finished marks: every duration collapses, so nothing is seen moving. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --rg-dur-hover: 0ms;
+    --rg-dur-popover: 0ms;
+    --rg-dur-panel: 0ms;
+    --rg-dur-seal-wash: 0ms;
+    --rg-dur-kolam: 0ms;
+  }
+}
+
+/* Light. Applies by default, and to any subtree with data-theme="light". */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --rg-canvas: #EAEAEA;
+  --rg-ground: #F5F4F6;
+  --rg-surface: #FFFFFF;
+  --rg-surface-2: #F4F2F5;
+  --rg-surface-3: #EAE7EC;
+  --rg-line: #E7E4E9;
+  --rg-control: #847E87;
+  --rg-text: #1B181D;
+  --rg-text-2: #4E4952;
+  --rg-text-3: #68626C;
+  --rg-brand: #BD1560;
+  --rg-brand-press: #9C0F4F;
+  --rg-on-brand: #FFFFFF;
+  --rg-brand-wash: #FBE9F1;
+  --rg-brand-ink: #8E0E4B;
+  --rg-agent: #00686F;
+  --rg-on-agent: #FFFFFF;
+  --rg-agent-wash: #DDF0F0;
+  --rg-seal: #F2A900;
+  --rg-on-seal: #1D1500;
+  --rg-seal-line: #825500;
+  --rg-seal-wash: #FDF1D3;
+  --rg-fail: #B3261E;
+  --rg-fail-wash: #FBE7E4;
+  --rg-warn: #994700;
+  --rg-warn-wash: #FBEBDD;
+
+  /* Not in direction.md's table: its text names plum, slate and clay but gives no values. */
+  --rg-avatar-plum: #EADFEF;
+  --rg-on-avatar-plum: #4A2A57;
+  --rg-avatar-slate: #DDE4EC;
+  --rg-on-avatar-slate: #2F3E4E;
+  --rg-avatar-clay: #F1E1D8;
+  --rg-on-avatar-clay: #5C3524;
+
+  --rg-focus: var(--rg-brand);
+  --rg-control-selected: var(--rg-surface);
+  --rg-scrim: rgb(27 24 29 / .32);
+  --rg-shadow-e1: 0 0 0 1px rgb(27 24 29 / .06), 0 1px 1px rgb(27 24 29 / .05), 0 8px 24px rgb(27 24 29 / .08);
+  --rg-shadow-e2: 0 0 0 1px rgb(27 24 29 / .06), 0 1px 1px rgb(27 24 29 / .05), 0 20px 48px rgb(27 24 29 / .16);
+}
+
+/* Dark, chosen explicitly. Keep in step with the system-preference block below. */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --rg-canvas: #232323;
+  --rg-ground: #131114;
+  --rg-surface: #211E23;
+  --rg-surface-2: #2B282E;
+  --rg-surface-3: #37333A;
+  --rg-line: #37333A;
+  --rg-control: #8F8993;
+  --rg-text: #F3F1F4;
+  --rg-text-2: #C8C3CB;
+  --rg-text-3: #A6A0A9;
+  --rg-brand: #FF7FB2;
+  --rg-brand-press: #FF9CC4;
+  --rg-on-brand: #2E0717;
+  --rg-brand-wash: #401630;
+  --rg-brand-ink: #FFBAD5;
+  --rg-agent: #5CCBD1;
+  --rg-on-agent: #07292B;
+  --rg-agent-wash: #12302F;
+  --rg-seal: #F5B82E;
+  --rg-on-seal: #1D1500;
+  --rg-seal-line: #F5B82E;
+  --rg-seal-wash: #33280D;
+  --rg-fail: #FF9A8F;
+  --rg-fail-wash: #3A1A17;
+  --rg-warn: #F2A36A;
+  --rg-warn-wash: #35230F;
+
+  --rg-avatar-plum: #4A3355;
+  --rg-on-avatar-plum: #EBDDF2;
+  --rg-avatar-slate: #34414F;
+  --rg-on-avatar-slate: #DDE6EF;
+  --rg-avatar-clay: #54392C;
+  --rg-on-avatar-clay: #F2E0D6;
+
+  --rg-focus: var(--rg-brand);
+  --rg-control-selected: var(--rg-surface-3);
+  --rg-scrim: rgb(0 0 0 / .5);
+  --rg-shadow-e1: 0 0 0 1px rgb(255 255 255 / .08), 0 1px 1px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --rg-shadow-e2: 0 0 0 1px rgb(255 255 255 / .1), 0 1px 1px rgb(0 0 0 / .4), 0 20px 48px rgb(0 0 0 / .56);
+}
+
+/* Dark, following the system unless the page has chosen light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --rg-canvas: #232323;
+    --rg-ground: #131114;
+    --rg-surface: #211E23;
+    --rg-surface-2: #2B282E;
+    --rg-surface-3: #37333A;
+    --rg-line: #37333A;
+    --rg-control: #8F8993;
+    --rg-text: #F3F1F4;
+    --rg-text-2: #C8C3CB;
+    --rg-text-3: #A6A0A9;
+    --rg-brand: #FF7FB2;
+    --rg-brand-press: #FF9CC4;
+    --rg-on-brand: #2E0717;
+    --rg-brand-wash: #401630;
+    --rg-brand-ink: #FFBAD5;
+    --rg-agent: #5CCBD1;
+    --rg-on-agent: #07292B;
+    --rg-agent-wash: #12302F;
+    --rg-seal: #F5B82E;
+    --rg-on-seal: #1D1500;
+    --rg-seal-line: #F5B82E;
+    --rg-seal-wash: #33280D;
+    --rg-fail: #FF9A8F;
+    --rg-fail-wash: #3A1A17;
+    --rg-warn: #F2A36A;
+    --rg-warn-wash: #35230F;
+
+    --rg-avatar-plum: #4A3355;
+    --rg-on-avatar-plum: #EBDDF2;
+    --rg-avatar-slate: #34414F;
+    --rg-on-avatar-slate: #DDE6EF;
+    --rg-avatar-clay: #54392C;
+    --rg-on-avatar-clay: #F2E0D6;
+
+    --rg-focus: var(--rg-brand);
+    --rg-control-selected: var(--rg-surface-3);
+    --rg-scrim: rgb(0 0 0 / .5);
+    --rg-shadow-e1: 0 0 0 1px rgb(255 255 255 / .08), 0 1px 1px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --rg-shadow-e2: 0 0 0 1px rgb(255 255 255 / .1), 0 1px 1px rgb(0 0 0 / .4), 0 20px 48px rgb(0 0 0 / .56);
+  }
+}

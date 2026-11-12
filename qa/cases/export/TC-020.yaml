@@ -1,0 +1,19 @@
+id: TC-020
+feature: export
+title: Image export accepts scales 1 and 3 and rejects 0 and 4
+priority: P2
+level: integration
+technique: boundary value analysis
+tags:
+  - regression
+covers:
+  - AC-8
+steps:
+  - Call image_export with scale 1
+  - With scale 3
+  - With scale 0
+  - With scale 4
+expected:
+  - Scales 1 and 3 return an image
+  - Scales 0 and 4 are rejected before rendering
+automation: {}

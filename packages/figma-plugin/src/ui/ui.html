@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rangoli Import</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font: 12px/16px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --bg: var(--figma-color-bg, #fff);
+        --bg-hover: var(--figma-color-bg-hover, #f0f0f0);
+        --text: var(--figma-color-text, #1e1e1e);
+        --muted: var(--figma-color-text-secondary, #6e6e6e);
+        --border: var(--figma-color-border, #e6e6e6);
+        --brand: var(--figma-color-bg-brand, #0d99ff);
+        --on-brand: var(--figma-color-text-onbrand, #fff);
+        --danger: var(--figma-color-text-danger, #c0392b);
+        --focus: var(--figma-color-border-selected, #0d99ff);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+      [hidden] { display: none !important; }
+
+      header { padding: 12px 16px 8px; }
+      h1 { font-size: 13px; font-weight: 600; margin: 0; }
+      .file { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .tree-head { display: flex; justify-content: space-between; padding: 8px 16px 4px; color: var(--muted); }
+      #tree { flex: 1; min-height: 96px; overflow-y: auto; list-style: none; margin: 0; padding: 0 8px; border-bottom: 1px solid var(--border); }
+      #tree ul { list-style: none; margin: 0; padding: 0 0 0 24px; }
+      .row { display: flex; align-items: center; gap: 4px; min-height: 28px; border-radius: 4px; padding-right: 8px; }
+      .row:hover { background: var(--bg-hover); }
+      .row label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 28px; }
+      .row span.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .disclose { width: 24px; height: 24px; flex: none; border: 0; background: none; color: var(--muted); padding: 0; border-radius: 4px; cursor: pointer; }
+      .disclose::before { content: '\25B8'; display: inline-block; transition: transform 120ms ease-out; }
+      .disclose[aria-expanded='true']::before { transform: rotate(90deg); }
+      .hint { padding: 4px 8px 4px 32px; color: var(--muted); }
+      .hint.error { color: var(--danger); }
+
+      form { padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+      .check { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+      .field { display: flex; flex-direction: column; gap: 4px; }
+      .field > span { color: var(--muted); }
+      input[type='password'], select {
+        font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+        border-radius: 4px; height: 32px; padding: 0 8px; width: 100%;
+      }
+      input[type='checkbox'] { margin: 0; accent-color: var(--brand); flex: none; }
+      .actions { display: flex; gap: 8px; }
+      button.primary, button.secondary { font: inherit; font-weight: 500; height: 32px; padding: 0 12px; border-radius: 4px; cursor: pointer; }
+      button.primary { flex: 1; background: var(--brand); color: var(--on-brand); border: 1px solid transparent; }
+      button.secondary { background: none; color: var(--text); border: 1px solid var(--border); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+      #status { padding: 0 16px 12px; }
+      #status:empty { display: none; }
+      .status-line { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+      .status-line.error { color: var(--danger); }
+      progress { width: 100%; height: 4px; margin-top: 4px; accent-color: var(--brand); }
+      .link { font: inherit; background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; }
+      details { margin-top: 8px; }
+      summary { cursor: pointer; }
+      .gaps { max-height: 96px; overflow-y: auto; margin: 4px 0 0; padding: 0; list-style: none; color: var(--muted); }
+      .gaps li { display: flex; justify-content: space-between; gap: 8px; }
+      .gaps .count { font-variant-numeric: tabular-nums; }
+
+      @media (prefers-reduced-motion: reduce) { .disclose::before { transition: none; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Export to Rangoli</h1>
+      <div class="file" id="file-name"></div>
+    </header>
+
+    <div class="tree-head"><span>Pages and frames</span><span id="count"></span></div>
+    <ul id="tree" aria-label="Pages and frames"></ul>
+
+    <form id="form" autocomplete="off">
+      <label class="check"><input type="checkbox" id="images" checked /> Include images</label>
+      <label class="check"><input type="checkbox" id="previews" checked /> Include frame previews for comparison</label>
+      <label class="field">
+        <span>Server</span>
+        <select id="server"></select>
+      </label>
+      <label class="field">
+        <span>Import token from your Rangoli project</span>
+        <input type="password" id="token" autocomplete="off" spellcheck="false" />
+      </label>
+      <div class="actions">
+        <button type="submit" class="primary" id="upload" disabled>Upload to Rangoli</button>
+        <button type="button" class="secondary" id="download" disabled>Download JSON</button>
+      </div>
+    </form>
+
+    <div id="status" role="status" aria-live="polite"></div>
+    <script>/*__UI_BUNDLE__*/</script>
+  </body>
+</html>

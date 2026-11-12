@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "id": "2026-11-09-14-34-36-smoke-node-ae9a",
+  "suite": "smoke",
+  "platform": "node",
+  "environment": "local",
+  "commit": "889590f",
+  "dirty": true,
+  "startedAt": "2026-11-09T14:34:36.346Z",
+  "finishedAt": "2026-11-09T14:34:44.584Z",
+  "status": "finished",
+  "outcome": "passed",
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "blocked": 0,
+    "not_run": 0
+  },
+  "notes": [],
+  "results": [
+    {
+      "case": "TC-001",
+      "title": "Standalone HTML includes tokens, dark mode, reduced motion and states",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 40
+    },
+    {
+      "case": "TC-002",
+      "title": "Layer JavaScript appears only when scripts are enabled",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 23
+    },
+    {
+      "case": "TC-007",
+      "title": "Token export writes CSS variables with a dark-mode block",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 19
+    },
+    {
+      "case": "TC-012",
+      "title": "Prototype export builds a standalone page",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 76
+    },
+    {
+      "case": "TC-015",
+      "title": "Icons export as SVG, React and sprite",
+      "priority": "P1",
+      "status": "passed",
+      "source": "junit",
+      "tests": 1,
+      "durationMs": 12
+    }
+  ],
+  "runner": {
+    "command": "npx vitest run --reporter=junit --outputFile=\"qa/launches/2026-11-09-14-34-36-smoke-node-ae9a/evidence/junit.xml\" \"packages/engine/src/render-lint.test.ts\" \"packages/engine/src/expression.test.ts\" \"packages/engine/src/tokens.test.ts\" \"packages/engine/src/prototype.test.ts\" \"packages/engine/src/icons.test.ts\"",
+    "exitCode": 0,
+    "testsReported": 48,
+    "problems": [],
+    "unlinkedFailures": []
+  }
+}

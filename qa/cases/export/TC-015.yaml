@@ -1,0 +1,18 @@
+id: TC-015
+feature: export
+title: Icons export as SVG, React and sprite
+priority: P1
+level: unit
+tags:
+  - smoke
+  - regression
+covers:
+  - AC-7
+steps:
+  - Export the clock icon in each format
+expected:
+  - SVG has viewBox="0 0 24 24"
+  - React output has "export function ClockIcon("
+  - Sprite has <symbol id="ui-clock"
+automation:
+  node: packages/engine/src/icons.test.ts#exports SVG, React and sprite

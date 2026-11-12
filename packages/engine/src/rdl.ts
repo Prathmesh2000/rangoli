@@ -10,16 +10,21 @@
  *                 move #id (into #p [start|end] | before #x | after #x) | delete #id | replace #id + block
  */
 import { RangoliDocument, RangoliError, type Op } from './document.js';
-import { isTokenRef, type ComponentDef, type Dim, type Layout, type Len, type Page, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
+import { isTokenRef, type TokenTree, type ComponentDef, type Dim, type Layout, type Len, type Page, type Paint, type RNode, type Sizing, type Style, type TokenRef } from './model.js';
 import { TokenResolver } from './tokens.js';
+import { sanitizeCss, tokenModeError, tokenPathError } from './safety.js';
 import { parseMotionLines, targetKey } from './motion.js';
-import { parseProtoLines, parseTimelineLines } from './prototype.js';
+import { parseProtoLines, parseProtoVars, parseTimelineLines } from './prototype.js';
 import { compileIcon, findIcon, type IconDef, type IconSet } from './icons.js';
 import { findAsset } from './images.js';
 import { expandPatterns } from './patterns.js';
 import { libraryComponents } from './library.js';
 import { LANGUAGES, languageOf, languageTokens } from './languages.js';
+import { THEME_PRESETS, themesOf, validThemeId, withTheme, withoutTheme, type ThemeSeeds } from './themes.js';
+import { customFonts, validFontSrc, withCustomFont } from './fonts.js';
 import { expandTemplate, slotName } from './components.js';
+
+export { sanitizeCss };
 
 export interface Diagnostic {
   line: number;
@@ -96,12 +101,15 @@ export type Command =
   | { kind: 'delete'; line: number; id: string }
   | { kind: 'replace'; line: number; id: string; nodes: PNode[] }
   | { kind: 'motion'; line: number; base: string; filters: Record<string, string>; clear: boolean; lines: { no: number; toks: string[] }[] }
-  | { kind: 'proto'; line: number; node: string | null; start?: string; clear: boolean; lines: { no: number; toks: string[] }[] }
+  | { kind: 'proto'; line: number; node: string | null; start?: string; vars?: Record<string, string> | null; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'timeline'; line: number; name: string; clear: boolean; lines: { no: number; toks: string[] }[] }
   | { kind: 'iconset'; line: number; name: string; opts: string[] }
   | { kind: 'icon'; line: number; set: string; name: string; opts: string[]; lines: { no: number; toks: string[] }[] }
   | { kind: 'token'; line: number; path: string; value: string; modes: Record<string, string> }
   | { kind: 'language'; line: number; id: string; opts: Record<string, string> }
+  | { kind: 'theme'; line: number; id: string; remove: boolean; opts: Record<string, string> }
+  | { kind: 'sceneset'; line: number; name: string; remove: boolean; opts: Record<string, string> }
+  | { kind: 'fontface'; line: number; family: string; remove: boolean; opts: Record<string, string> }
   | { kind: 'component'; line: number; name: string; from?: string; detach?: string; opts: string[]; description?: string; lines: { no: number; toks: string[] }[] };
 
 export type Where = { pos: 'start' | 'end' } | { pos: 'before' | 'after'; ref: string } | { pos: 'index'; index: number };
@@ -110,12 +118,15 @@ const COMMANDS = new Set(['set', 'insert', 'move', 'delete', 'replace']);
 const isCommandLine = (ln: Line) =>
   (COMMANDS.has(ln.toks[0]!) && !!ln.toks[1]?.startsWith('#')) ||
   (ln.toks[0] === 'motion' && /^[@#]/.test(ln.toks[1] ?? '')) ||
-  (ln.toks[0] === 'proto' && /^(#|start$)/.test(ln.toks[1] ?? '')) ||
+  (ln.toks[0] === 'proto' && /^(#|start$|var$)/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'timeline' && /^[\w-]+$/.test(ln.toks[1] ?? '') && ln.toks.length <= 4) ||
   (ln.toks[0] === 'icon' && /^[\w-]+\/[\w~.-]+$/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'iconset' && /^[\w-]+$/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'component' && /^@[A-Za-z][\w-]*$/.test(ln.toks[1] ?? '')) ||
   (ln.toks[0] === 'token' && /^[A-Za-z][\w-]*(\.[\w-]+)+$/.test(ln.toks[1] ?? '') && ln.toks.length >= 3) ||
+  (ln.toks[0] === 'theme' && /^[a-z][\w-]*$/.test(ln.toks[1] ?? '') && ln.toks.length > 2 && ln.toks.slice(2).every((t) => t === 'none' || /^[\w-]+=/.test(t))) ||
+  (ln.toks[0] === 'fontface' && (ln.toks[1] ?? '').startsWith('"') && ln.toks.length > 2) ||
+  (ln.toks[0] === 'sceneset' && (ln.toks[1] ?? '').startsWith('"') && ln.toks.length > 2) ||
   (ln.toks[0] === 'language' && /^[a-z][\w-]*$/.test(ln.toks[1] ?? '') && ln.toks.slice(2).every((t) => /^[\w-]+=/.test(t)));
 
 export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic[] } {
@@ -158,6 +169,21 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
         i++;
       }
       commands.push({ kind: 'motion', line: ln.no, base: ln.toks[1]!, filters, clear, lines: body });
+      continue;
+    }
+    if ((kw === 'theme' || kw === 'fontface' || kw === 'sceneset') && isCommandLine(ln)) {
+      i++;
+      const kv: Record<string, string> = {};
+      let remove = false;
+      for (const t of ln.toks.slice(2)) {
+        if (t === 'none') { remove = true; continue; }
+        const m = /^([\w-]+)=(.+)$/.exec(t);
+        if (m) kv[m[1]!] = m[2]!.startsWith('"') ? unquote(m[2]!) : m[2]!;
+        else errors.push({ line: ln.no, severity: 'error', message: `Unexpected "${t}" — use key=value` });
+      }
+      if (kw === 'theme') commands.push({ kind: 'theme', line: ln.no, id: ln.toks[1]!, remove, opts: kv });
+      else if (kw === 'sceneset') commands.push({ kind: 'sceneset', line: ln.no, name: unquote(ln.toks[1]!), remove, opts: kv });
+      else commands.push({ kind: 'fontface', line: ln.no, family: unquote(ln.toks[1]!), remove, opts: kv });
       continue;
     }
     if ((kw === 'token' || kw === 'language') && isCommandLine(ln)) {
@@ -218,7 +244,11 @@ export function parseRdl(src: string): { commands: Command[]; errors: Diagnostic
       }
       const clear = ln.toks.includes('none');
       if (kw === 'proto') {
-        if (ln.toks[1] === 'start') {
+        if (ln.toks[1] === 'var') {
+          const vars = clear && ln.toks.length === 3 ? null : parseProtoVars(ln.toks.slice(2));
+          if (!clear && (!vars || ln.toks.length < 3)) errors.push({ line: ln.no, severity: 'error', message: 'Use: proto var name=value [name=value…], or proto var none' });
+          else commands.push({ kind: 'proto', line: ln.no, node: null, vars, clear: false, lines: [] });
+        } else if (ln.toks[1] === 'start') {
           const f = ln.toks[2];
           if (!f?.startsWith('#') && f !== 'none') errors.push({ line: ln.no, severity: 'error', message: 'Use: proto start #frameId' });
           commands.push({ kind: 'proto', line: ln.no, node: null, start: f === 'none' ? '' : f?.slice(1), clear: false, lines: [] });
@@ -321,7 +351,20 @@ function colorFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[])
 }
 
 /** Any paint: solid colour or linear(angle, c1[@pos], c2…) / radial(c1, c2…). */
+/** image(assetId|https-url[,cover|contain|tile][,position][,tint]) */
+function imagePaint(args: string[], ctx: RdlContext, line: number, diag: Diagnostic[]): Paint | undefined {
+  const [src = '', fit = 'cover', pos = 'center', tint] = args;
+  const isUrl = /^https:\/\/[^\s"'()<>\\,]+$/.test(src);
+  if (!isUrl && !ctx.assets?.[src]) { diag.push({ line, severity: 'error', message: `image(): "${src}" is neither an uploaded asset id nor an https URL` }); return undefined; }
+  if (!['cover', 'contain', 'tile'].includes(fit)) { diag.push({ line, severity: 'error', message: 'image(): fit must be cover, contain or tile' }); return undefined; }
+  if (!/^(center|top|bottom|left|right|[a-z]+-[a-z]+)$/.test(pos)) { diag.push({ line, severity: 'error', message: 'image(): position must be center, top, bottom, left, right or e.g. top-left' }); return undefined; }
+  const t = tint ? colorFrom(tint, ctx, line, diag) : undefined;
+  return { image: { ...(isUrl ? { url: src } : { asset: src }), fit: fit as 'cover', ...(pos !== 'center' ? { pos } : {}), ...(t ? { tint: t } : {}) } };
+}
+
 function paintFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[]): Paint | undefined {
+  const im = /^image\((.+)\)$/.exec(v);
+  if (im) return imagePaint(im[1]!.split(',').map((s) => s.trim()), ctx, line, diag);
   const g = /^(linear|radial)\((.+)\)$/.exec(v);
   if (!g) return colorFrom(v, ctx, line, diag);
   const args = g[2]!.split(',').map((s) => s.trim());
@@ -335,15 +378,6 @@ function paintFrom(v: string, ctx: RdlContext, line: number, diag: Diagnostic[])
     if (color) stops.push({ at: at !== undefined ? Number(at) / 100 : i / (args.length - 1), color });
   });
   return { gradient: { type: g[1] as 'linear' | 'radial', angle: angle ?? 180, stops } };
-}
-
-/** Sanitise raw CSS declarations: no urls, imports, expressions, or block syntax. */
-export function sanitizeCss(css: string): string | undefined {
-  const decls = css.split(';').map((d) => d.trim()).filter(Boolean);
-  for (const d of decls) {
-    if (!/^-?[a-z][a-z-]*\s*:\s*[^;{}<>]+$/i.test(d) || /url\(|expression|@import|javascript:|behavior/i.test(d)) return undefined;
-  }
-  return decls.join(';');
 }
 
 const fixed = (v: number): Dim => ({ kind: 'fixed', v });
@@ -378,6 +412,7 @@ const UNSET: Record<string, (n: RNode) => void> = {
   lh: (n) => { if (n.style?.font) delete n.style.font.lineHeight; },
   ls: (n) => { if (n.style?.font) delete n.style.font.letterSpacing; },
   abs: (n) => { delete n.absolute; delete n.position; },
+  script: (n) => { delete n.script; },
   paths: (n) => { if (n.vector) n.vector.paths = n.vector.paths.filter((p) => p.fromShapes); },
   w: (n) => { if (n.size) delete n.size.w; },
   h: (n) => { if (n.size) delete n.size.h; },
@@ -487,6 +522,12 @@ export function applyFlags(node: RNode, flags: string[], text: string | undefine
     if ((m = /^ls:(-?\d*\.?\d+)(em|px)?$/.exec(f))) { style().font = { ...(style().font ?? {}), letterSpacing: `${m[1]}${m[2] ?? 'px'}` }; continue; }
     if (f === 'italic') { style().italic = true; continue; }
     // unset:rotate,italic,css — remove properties (back to inherited / component default)
+    if ((m = /^script:(.+)$/.exec(f))) {
+      const code = m[1]!.startsWith('"') ? unquote(m[1]!) : m[1]!;
+      if (code.length > 100_000) diag.push({ line, severity: 'error', message: 'script: keep a layer script under 100 KB' });
+      else node.script = code;
+      continue;
+    }
     if ((m = /^unset:([\w,-]+)$/.exec(f))) {
       for (const key of m[1]!.split(',')) if (!unsetProp(node, key)) diag.push({ line, severity: 'error', message: `unset: unknown property "${key}" — e.g. ${Object.keys(UNSET).join(', ')}` });
       continue;
@@ -703,7 +744,7 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         const copy = structuredClone(node);
         applyFlags(copy, cmd.flags, cmd.text, ctx, cmd.line, errors);
         const patch: Record<string, unknown> = {};
-        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked', 'icon', 'image', 'absolute', 'vector'] as const) {
+        for (const k of ['type', 'name', 'role', 'layout', 'size', 'position', 'style', 'text', 'variant', 'props', 'hidden', 'locked', 'icon', 'image', 'absolute', 'vector', 'script'] as const) {
           if (JSON.stringify(copy[k]) !== JSON.stringify(node[k])) patch[k] = copy[k] ?? null;
         }
         if (Object.keys(patch).length) ops.push({ op: 'update', page: page.id, id: cmd.id, patch: patch as Partial<RNode> });
@@ -780,8 +821,17 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
       }
       case 'token': {
         // token color.primary.600 #1d4ed8 dark=#60a5fa  ·  token space.4 18  ·  token radius.control {radius.full}
+        const pathError = tokenPathError(cmd.path) ?? Object.keys(cmd.modes).map(tokenModeError).find(Boolean);
+        if (pathError) { errors.push({ line: cmd.line, severity: 'error', message: pathError }); break; }
         const tokens = structuredClone(doc.data.tokens) as Record<string, unknown>;
         const parts = cmd.path.split('.');
+        if (cmd.value === 'none' && cmd.path.startsWith('color.custom.')) {
+          let g = tokens;
+          for (const p of parts.slice(0, -1)) g = (g[p] ?? {}) as Record<string, unknown>;
+          delete g[parts[parts.length - 1]!];
+          ops.push({ op: 'setTokens', tokens: tokens as never });
+          break;
+        }
         const key = parts[parts.length - 1]!;
         const parse = (v: string): unknown => (/^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
         let cur = tokens;
@@ -811,13 +861,56 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         else ops.push({ op: 'setTokens', tokens: tokens as never });
         break;
       }
+      case 'theme': {
+        // theme ocean preset=ocean · theme brand bg=#0b1020 primary=#7aa2ff [surface=#…] [text=#…] [name="Brand"] · theme ocean none
+        if (!validThemeId(cmd.id)) { errors.push({ line: cmd.line, severity: 'error', message: `"${cmd.id}" cannot be a theme name` }); break; }
+        if (cmd.remove) { ops.push({ op: 'setTokens', tokens: withoutTheme(doc.data.tokens, cmd.id) }); break; }
+        const preset = cmd.opts.preset ? THEME_PRESETS[cmd.opts.preset] : undefined;
+        if (cmd.opts.preset && !preset) { errors.push({ line: cmd.line, severity: 'error', message: `unknown theme preset — ${Object.keys(THEME_PRESETS).join(', ')}` }); break; }
+        const seeds = { ...preset, ...cmd.opts } as ThemeSeeds;
+        const hex = /^#[0-9a-fA-F]{6}$/;
+        const bad = (['bg', 'primary', 'surface', 'text'] as const).filter((k) => seeds[k] !== undefined && !hex.test(seeds[k]!));
+        if (!seeds.bg || !seeds.primary || bad.length) { errors.push({ line: cmd.line, severity: 'error', message: 'theme needs bg=#rrggbb and primary=#rrggbb (optional surface, text), or preset=name' }); break; }
+        ops.push({ op: 'setTokens', tokens: withTheme(doc.data.tokens, cmd.id, seeds) });
+        break;
+      }
+      case 'sceneset': {
+        // sceneset "Hero gem" objects="gem color=primary.400" light=neon — your own reusable 3D designs
+        const tokens = structuredClone(doc.data.tokens) as TokenTree & { $extensions?: { rangoli?: { scenes?: Record<string, Record<string, string>> } } };
+        const r = (((tokens.$extensions ??= {}) as Record<string, unknown>).rangoli ??= {}) as { scenes?: Record<string, Record<string, string>> };
+        const scenes = (r.scenes ??= {});
+        if (cmd.remove) delete scenes[cmd.name];
+        else if (!cmd.opts.objects || !/^[\w '-]{1,60}$/.test(cmd.name)) { errors.push({ line: cmd.line, severity: 'error', message: 'sceneset needs a name and objects="…"' }); break; }
+        else scenes[cmd.name] = cmd.opts;
+        ops.push({ op: 'setTokens', tokens });
+        break;
+      }
+      case 'fontface': {
+        // fontface "Brand Sans" url=https://…/brand.woff2 [weight=700] [style=italic] · fontface "Brand Sans" none
+        if (!/^[\w '-]{1,80}$/.test(cmd.family)) { errors.push({ line: cmd.line, severity: 'error', message: 'font names can use letters, numbers, spaces, hyphens and apostrophes' }); break; }
+        if (cmd.remove) { ops.push({ op: 'setTokens', tokens: withCustomFont(doc.data.tokens, cmd.family, null) }); break; }
+        const src = cmd.opts.url ?? cmd.opts.data ?? '';
+        if (!validFontSrc(src)) { errors.push({ line: cmd.line, severity: 'error', message: 'fontface needs url=https://… or data=data:font/…;base64,… (up to about 1.5 MB)' }); break; }
+        const faces = (customFonts(doc.data.tokens)[cmd.family] ?? []).filter((f) => (f.weight ?? '400') !== (cmd.opts.weight ?? '400') || (f.style ?? 'normal') !== (cmd.opts.style ?? 'normal'));
+        ops.push({ op: 'setTokens', tokens: withCustomFont(doc.data.tokens, cmd.family, [...faces, { src, ...(cmd.opts.weight ? { weight: cmd.opts.weight } : {}), ...(cmd.opts.style ? { style: cmd.opts.style } : {}) }]) });
+        break;
+      }
       case 'language': {
         // language editorial [brand=#9a3b26] — switches type, density, shape, elevation and motion; keeps the brand
         if (!LANGUAGES[cmd.id]) { errors.push({ line: cmd.line, severity: 'error', message: `unknown design language "${cmd.id}" — ${Object.keys(LANGUAGES).join(', ')}` }); break; }
         const curLang = languageOf(doc.data.tokens);
         const brand = cmd.opts.brand ?? curLang.options.brand;
         if (brand && !/^#[0-9a-fA-F]{6}$/.test(brand)) { errors.push({ line: cmd.line, severity: 'error', message: 'brand must be #rrggbb' }); break; }
-        ops.push({ op: 'setTokens', tokens: languageTokens(cmd.id, brand ? { brand } : {}) });
+        // themes and added fonts belong to the document, not the language
+        const fresh = languageTokens(cmd.id, brand ? { brand } : {}) as TokenTree;
+        const keep = (doc.data.tokens as { $extensions?: { rangoli?: { fonts?: unknown } } }).$extensions?.rangoli?.fonts;
+        if (keep) ((fresh as { $extensions: { rangoli: Record<string, unknown> } }).$extensions.rangoli).fonts = keep;
+        let next = fresh;
+        for (const [id, info] of Object.entries(themesOf(doc.data.tokens))) {
+          const r = new TokenResolver(doc.data.tokens);
+          next = withTheme(next, id, { name: info.name, bg: r.resolve('color.bg.canvas', id) as string, surface: r.resolve('color.bg.surface', id) as string, text: r.resolve('color.text.primary', id) as string, primary: r.resolve('color.action.primary', id) as string });
+        }
+        ops.push({ op: 'setTokens', tokens: next });
         break;
       }
       case 'component': {
@@ -867,6 +960,10 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
         break;
       }
       case 'proto': {
+        if (cmd.node === null && cmd.vars !== undefined) {
+          ops.push({ op: 'setProtoVars', vars: cmd.vars ? { ...(doc.data.prototype?.variables ?? {}), ...cmd.vars } : null });
+          break;
+        }
         if (cmd.node === null) {
           if (cmd.start === undefined) break;
           if (cmd.start && (!page.nodes[cmd.start] || page.nodes[cmd.start]!.parent)) { errors.push({ line: cmd.line, severity: 'error', message: `#${cmd.start} must be a top-level frame (a screen)` }); break; }
@@ -890,6 +987,7 @@ function compileCommands(doc: RangoliDocument, commands: Command[], opts: Compil
             if (!t || !comp) errors.push({ line: cmd.line, severity: 'error', message: `swap target #${it.target ?? cmd.node} must be a component instance` });
             else for (const [k, v] of Object.entries(it.variant ?? {})) if (!comp.axes[k]?.includes(v)) errors.push({ line: cmd.line, severity: 'error', message: `${comp.name} has no ${k}=${v}` });
           }
+          if (['show', 'hide', 'toggle'].includes(it.action) && it.target && !page.nodes[it.target]) errors.push({ line: cmd.line, severity: 'error', message: `${it.action} target #${it.target} not found` });
           if (it.action === 'play' && it.timeline && !doc.data.timelines?.[it.timeline]) errors.push({ line: cmd.line, severity: 'error', message: `timeline "${it.timeline}" not defined (define it with a timeline block first)` });
         }
         ops.push({ op: 'setInteractions', node: cmd.node, list });
@@ -1125,6 +1223,10 @@ function lenStr(v: Len, group: string): string {
 function paintStr(p: Paint, tokens: TokenResolver): string {
   if (isTokenRef(p)) return `${tokens.shortName(p.token, 'color')}${p.alpha !== undefined ? `~${p.alpha}` : ''}`;
   if ('hex' in p) return p.hex;
+  if ('image' in p) {
+    const m = p.image;
+    return `image(${[m.asset ?? m.url, m.fit, ...(m.pos || m.tint ? [m.pos ?? 'center'] : []), ...(m.tint ? [paintStr(m.tint, tokens)] : [])].join(',')})`;
+  }
   const g = p.gradient;
   const stops = g.stops.map((s, i) => `${paintStr(s.color, tokens)}${Math.abs(s.at - i / (g.stops.length - 1)) > 0.001 ? `@${Math.round(s.at * 100)}` : ''}`);
   return g.type === 'linear' ? `linear(${g.angle ?? 180},${stops.join(',')})` : `radial(${stops.join(',')})`;
@@ -1230,6 +1332,7 @@ export function nodeLine(n: RNode, tokens: TokenResolver, doc: RangoliDocument):
     for (const p of v.paths) if (!p.fromShapes) parts.push(`d:${JSON.stringify(p.d)}`);
   }
   if (n.absolute) parts.push('abs');
+  if (n.script) parts.push(`script:${JSON.stringify(n.script)}`);
   if (n.icon) {
     // short name when unambiguous
     const short = n.icon.split('/')[1]!;

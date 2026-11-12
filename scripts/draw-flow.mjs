@@ -26,6 +26,7 @@ const settle = () => page.waitForTimeout(350);
 const results = [];
 const check = (name, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `  ${JSON.stringify(detail)}`}`); };
 
+for (const n of Object.values(await nodes())) if (!n.parent) await rdl('delete #' + n.id);
 const seed = await rdl('Screen col p6 gap4 w800 h560 fill:surface\n  Title text title "Draw here"\n  Card col p4 gap2 w320 fill:canvas stroke:border r3\n    Heading text title-sm "Plan"\n    Body text body "Inner"');
 const screen = seed.created[0], card = seed.created[2];
 await settle();
@@ -225,7 +226,7 @@ await fill('color.bg.surface value', '#fffaf0');
   const t = (await data()).tokens.color.bg.surface;
   check('semantic colour edit keeps dark', t.$value === '#fffaf0' && !!t.$extensions?.rangoli?.modes?.dark, t);
 }
-await page.getByRole('radio', { name: 'Dark' }).click();
+await page.getByLabel('Theme', { exact: true }).selectOption('dark');
 await settle();
 await page.screenshot({ path: join(out, '6-dark.png') });
 console.log(`${results.filter(Boolean).length}/${results.length} checks; browser errors: ${errors.length}`);

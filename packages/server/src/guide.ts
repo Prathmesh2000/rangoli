@@ -27,6 +27,14 @@ RDL quick reference (one node per line, indentation = children):
     building block from layers:  component @PlanCard from #n12 ["description"] [keep] → text/icon/image layers become props by
       layer name (@PlanCard "Team" price="$49" note=none mark=ui/star). Linked: component @PlanCard detach #id → edit → from #id updates all.
     components_list shows them under "This document"; component_help shows slots and your rules.
+- fonts: font:"Any Google Font" just works (1,959 families load automatically) · fontface "Brand Sans" url=https://…/brand.woff2 [weight=700] adds your own
+- themes beyond light/dark: theme ocean preset=ocean (midnight ocean forest sunset neon rose sepia mint mono contrast) · theme brand bg=#101820 primary=#ffb000 [surface=#…] [text=#…] [name="Brand"] · token color.bg.surface #fff brand=#1a2530 · theme brand none
+- background images: fill:image(<asset id or https url>,cover|contain|tile,center|top|…,<tint colour~alpha>)
+- JavaScript per layer: script:"el.addEventListener('click', …)" (el = the layer). Runs on exported pages and in the editor's sandboxed Run, never in the editor or shared previews.
+- 3D: @Scene3D h360 light=neon|studio|soft|dramatic particles=300 parallax=true objects="gem color=primary.400 metal=.6 rough=.1 spin=.5 float=1 | torus x=2 s=.6" (shapes: box sphere torus torusknot cone cylinder capsule plane ring icosahedron octahedron dodecahedron coin gem model url=https://….glb)
+- 3D objects also: blob lathe text=HELLO_WORLD extrude icon=<any icon> depth=.4 · mat=matte|plastic|metal|chrome|gold|glass|neon|clay|toon · copies=8 radius=2 (ring) stepx/stepy (row) · orbit= pulse= map=<https texture> · save yours: sceneset "Name" objects="…" light=neon
+- field looks: @Input|@Select|@Textarea appearance=outlined|filled|underlined|pill|ghost|floating|floating-filled · @Input title= help= max= prefix= suffix= iconright= reveal=true required=true · @Button variant=outline|soft|link|success icon= iconright= · @Card @ButtonGroup @Toggle @ChoiceCard @Banner @Callout @ListItem @Label
+- web3: @WalletButton state=disconnected|connecting|wrong-network|connected · @Address · @TxStatus state=preparing|confirm|submitted|pending|success|failed · +web3-navbar +web3-hero +wallet-modal +network-menu +swap-card +nft-card +nft-grid +mint-page +staking-card +dao-proposal +token-table · language web3
 - tokens in RDL: token color.primary.600 #1d4ed8 dark=#60a5fa · token radius.control {radius.full} · token textStyle.body.fontSize 15 · language editorial [brand=#9a3b26]
 - design language: design_language (no id = list) switches type, density, radii, elevation and motion for every component at once:
     rangoli material fluent cupertino carbon editorial playful brutalist dense. Pick one that fits the product before styling by hand.
@@ -36,6 +44,9 @@ RDL quick reference (one node per line, indentation = children):
     Tabs Breadcrumbs Pagination Stepper · Alert Toast · Chart(kind=column|bar|line|area|stacked|donut|heatmap) Sparkline Meter ·
     CodeBlock NumberInput TagInput OTP AvatarGroup ColorPicker · Video Carousel.   e.g. @Status variant=failed · @Tabs selected=1 "Overview|Runs:24|Settings"
     charts: @Chart kind=line w560 h240 data="94,96,98;…" labels="Mon|Tue|Wed" series="A|B" unit="%" "Title" — one axis, ≤8 series, fixed colours; table=true also shows the numbers (use it when series must be readable without hover)
+- people queue work for you in the app: at the start of a session and when asked, call agent_requests (it can include a screenshot or sketch to rebuild as layers), then agent_request_done
+- prototype logic: proto var plan=free · click set plan=pro seats=+1 · click toggle agreed · click show|hide|toggle #layer · click navigate #a if plan=pro and seats>=2 · {{plan}} in any text shows the value
+- wireframes: wireframe_start adds a low-fidelity screen; +wf-image +wf-text +wf-card +wf-list +wf-chart +wf-input +wf-button +wf-nav +wf-sidebar +wf-tabbar are placeholder blocks; annotate adds numbered spec notes
 - patterns (one line → editable layers, see patterns_list / pattern_help): +page-header +stats +toolbar +table +sidebar-nav +topbar
     +form +form-field +settings-row +modal +drawer +dropdown-menu +command-palette +empty-state +run-summary +test-case
     +login +signup +verify-code · +kanban +comments +chat +notifications +onboarding-checklist +timeline +profile-card ·
@@ -60,7 +71,10 @@ RDL quick reference (one node per line, indentation = children):
 - icons: use in designs as  Icon icon:clock w16 h16 color:text.secondary  (inside @Button/@Chip it leads the label, color = currentColor)
     define/edit:  icon ui/flask-check   then shape lines on a 24 grid, live area 1.5–22.5, coordinates on 0.5 steps:
       line x1 y1 x2 y2 · polyline x y … · polygon x y … · rect x y w h r=2 · circle cx cy r · dot cx cy [r] · arc cx cy r startDeg endDeg
-      plus cx cy size · path M L H V Q C Z (absolute only)
+      plus cx cy size · ellipse cx cy rx ry · ngon cx cy r sides · star cx cy outer inner points · path M L H V Q C Z (absolute only)
+      per shape: fill=true c=<colour> w=<stroke> o=<opacity> dash=2,2 rule=evenodd · first line "exact" keeps off-grid coordinates
+      gradient: grad=135,#f59e0b,primary.600 (angle, then 2-6 colours) · width along the stroke: vw=0.2,3,0.2 · live copies: sym=h12 v12 hv12 r6c12 (mirror or rotate about that grid position)
+    2,100+ Lucide icons work by name with no import: Icon icon:rocket w20 h20
     Match the set: same stroke (no per-icon stroke), similar optical size, ≤ 8 shapes, no detail < 1 unit.
     Variants for a human to pick: icon drafts/<name>~1 … ~4, then icon_render them together. icon_list / icon_get / icon_export.
 - images: Image asset:<id> w640 h360 fit:cover alt:"what it shows"   (or decorative) · Image w320 h180 = empty slot placeholder

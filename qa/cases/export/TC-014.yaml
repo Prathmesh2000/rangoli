@@ -1,0 +1,18 @@
+id: TC-014
+feature: export
+title: Prototype export and playback work through the server
+priority: P1
+level: integration
+tags:
+  - regression
+covers:
+  - AC-6
+steps:
+  - Create interactions and a timeline through the MCP tools
+  - Export the prototype
+  - Open /play
+expected:
+  - Export succeeds and the prototype is served at /play
+automation:
+  node: "packages/server/src/e2e.test.ts#prototype: interactions, timeline,
+    export, /play, and the agent can SEE (png + filmstrip)"

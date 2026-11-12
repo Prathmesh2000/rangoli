@@ -3,14 +3,20 @@ import { serializeRdl } from '@rangoli/engine';
 import { Canvas } from './Canvas';
 import { duplicateScript, indent, stripIds } from './helpers';
 import { Inspector } from './Inspector';
+import { NotesPanel } from './NotesPanel';
+import { AskAgent } from './AskAgent';
 import { Layers } from './Layers';
 import { Activity, LintPanel, TokensPanel } from './Panels';
 import { IconStudio } from './IconStudio';
-import { InsertPalette } from './InsertPalette';
+import { AddPanel } from './AddPanel';
+import { SceneStudio } from './SceneStudio';
+import { RunOverlay, exportHtml } from './Run';
+import { SelectionTools, groupSelection, copyStyle, pasteStyle } from './Multi';
+import { themesOf } from '@rangoli/engine';
 import { DrawTools, TOOL_KEYS } from './Draw';
 import { ImageStudio } from './ImageStudio';
 import { ReviewPanel } from './ReviewPanel';
-import { canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId, setTool } from './store';
+import { setSkin, api, canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId, setTool, openAddPanel, setState } from './store';
 
 const INSERTS: { key: string; label: string; rdl: string }[] = [
   { key: 'frame', label: 'Frame', rdl: 'Frame col gap3 p4 w320 fill:surface stroke:border r3' },
@@ -56,6 +62,10 @@ function useShortcuts() {
         if (e.key === 'Escape') select([]);
         return;
       }
+      if (!mod && !e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); openAddPanel(); return; }
+      if (mod && e.key.toLowerCase() === 'g' && sel.length) { e.preventDefault(); void groupSelection(); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'c' && one) { e.preventDefault(); copyStyle(one); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'v' && sel.length) { e.preventDefault(); void pasteStyle(sel); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
         e.preventDefault();
         void rdl(sel.map((id) => `delete #${id}`).join('\n'), `delete ${sel.length}`).then((r) => r && select([]));
@@ -123,38 +133,52 @@ function Toolbar() {
   const connected = useEditor((s) => s.connected);
   const agentActiveAt = useEditor((s) => s.agentActiveAt);
   const [now, setNow] = useState(Date.now());
-  const [menu, setMenu] = useState(false);
+  const leftTab = useEditor((s) => s.leftTab);
+  const docTokens = useEditor((s) => s.doc?.data.tokens);
+  const themes = docTokens ? themesOf(docTokens) : {};
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
   const agentActive = now - agentActiveAt < 4000;
   const role = useEditor((s) => s.role);
+  const hosted = useEditor((s) => s.hosted);
+  const locked = useEditor((s) => s.locked);
+  const skin = useEditor((s) => s.skin);
+  const layoutGrid = useEditor((s) => s.layoutGrid);
   const presence = useEditor((s) => s.presence);
   const others = presence.filter((p) => p.clientId !== myClientId);
   const view = useEditor((s) => s.view);
-  const editable = (role === 'owner' || role === 'editor') && view === 'design';
+  const editable = useEditor((s) => s.can.includes('design.edit')) && view === 'design';
 
   return (
     <header className="toolbar">
       <div className="tb-left">
-        <span className="brand" aria-hidden>◈</span>
+        {hosted ? <a className="btn" href={`/p/${hosted.projectId}/${hosted.stage}`}>← Journey</a> : <span className="brand" aria-hidden>◈</span>}
         <span className="doc-name">{name}</span>
-        {role !== 'owner' && <span className="role-badge" title="Your access in this session">{role}</span>}
+        {!hosted && role !== 'owner' && <span className="role-badge" title="Your access in this session">{role}</span>}
+        {locked && <span className="role-badge" title={locked}>Read only</span>}
         <div className="seg" role="radiogroup" aria-label="Workspace">
           <button role="radio" aria-checked={view === 'design'} className="seg-item" onClick={() => setView('design')}>Design</button>
           <button role="radio" aria-checked={view === 'icons'} className="seg-item" onClick={() => setView('icons')}>Icons</button>
           <button role="radio" aria-checked={view === 'images'} className="seg-item" onClick={() => setView('images')}>Images</button>
+          <button role="radio" aria-checked={view === '3d'} className="seg-item" onClick={() => setView('3d')}>3D</button>
         </div>
-        {editable && <div className="menu-wrap">
-          <button className="btn" aria-haspopup="dialog" aria-expanded={menu} title="Insert (I)" onClick={() => setMenu(!menu)}>Insert ▾</button>
-          {menu && <InsertPalette onInsert={(rdlLine) => void insert(rdlLine)} onClose={() => setMenu(false)} />}
-        </div>}
+        {editable && <AskAgent />}
+        {editable && <button className="btn" aria-pressed={leftTab === 'add'} title="Add components, patterns and 3D (A)" onClick={openAddPanel}>+ Add</button>}
         {editable && <button className="btn btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => void undo()}>↶</button>}
         {editable && <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>}
       </div>
       <div className="tb-right">
-        <button className="btn btn-play" title="Play the clickable prototype in a new tab" onClick={() => window.open('/play', '_blank', 'noopener')}>▶ Play</button>
+        {view === 'design' && <button className="btn" title="Run the page with its 3D and JavaScript" onClick={() => setState({ running: true })}>Run</button>}
+        {view === 'design' && <button className="btn" title="Download one HTML file with CSS and JavaScript" onClick={exportHtml}>Export</button>}
+        {view === 'design' && (
+          <div className="seg" role="radiogroup" aria-label="Fidelity">
+            {([['none', 'Hi-fi'], ['clean', 'Wireframe'], ['sketch', 'Sketch']] as const).map(([id, label]) => <button key={id} role="radio" aria-checked={skin === id} className="seg-item" onClick={() => setSkin(id)}>{label}</button>)}
+          </div>
+        )}
+        {view === 'design' && <button className="btn" aria-pressed={layoutGrid} title="Show a 12-column grid on each frame" onClick={() => setState({ layoutGrid: !layoutGrid })}>Grid</button>}
+        <button className="btn btn-play" title="Play the clickable prototype in a new tab" onClick={() => window.open(api(skin === 'none' ? '/play' : `/play?skin=${skin}`), '_blank', 'noopener')}>▶ Play</button>
         {agentActive && <span className="agent-pill" role="status">Agent editing…</span>}
         {others.length > 0 && (
           <div className="presence" aria-label="People in this session">
@@ -166,10 +190,11 @@ function Toolbar() {
             {others.length > 4 && <span className="who">+{others.length - 4}</span>}
           </div>
         )}
-        <div className="seg" role="radiogroup" aria-label="Color mode">
-          <button role="radio" aria-checked={mode === 'light'} className="seg-item" onClick={() => setMode('light')}>Light</button>
-          <button role="radio" aria-checked={mode === 'dark'} className="seg-item" onClick={() => setMode('dark')}>Dark</button>
-        </div>
+        <select className="input theme-select" aria-label="Theme" value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          {Object.entries(themes).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
+        </select>
         {view === 'design' && (
           <div className="zoom">
             <button className="btn btn-icon" aria-label="Zoom out" onClick={() => setZoom(zoom / 1.2)}>−</button>
@@ -189,7 +214,8 @@ export function App() {
   useEffect(connect, []);
   const toastMsg = useEditor((s) => s.toast);
   const lintCount = useEditor((s) => s.lint.filter((i) => i.severity !== 'P3').length);
-  const reviewCount = useEditor((s) => s.reviews.threads.filter((t) => !t.resolved).length + s.reviews.changesets.filter((c) => c.status === 'pending').length);
+  const reviewCount = useEditor((s) => s.reviews.threads.filter((t) => !t.resolved && t.kind !== 'annotation').length + s.reviews.changesets.filter((c) => c.status === 'pending').length);
+  const leftTab = useEditor((s) => s.leftTab);
   const tab = useEditor((s) => s.rightTab);
   const setTab = (t: typeof tab) => setRightTab(t);
 
@@ -198,7 +224,7 @@ export function App() {
     return (
       <div className="app">
         <Toolbar />
-        {view === 'icons' ? <IconStudio /> : <ImageStudio />}
+        {view === 'icons' ? <IconStudio /> : view === '3d' ? <SceneStudio /> : <ImageStudio />}
         {toastMsg && <div className={`toast toast-${toastMsg.kind}`} role="alert">{toastMsg.text}</div>}
       </div>
     );
@@ -208,18 +234,27 @@ export function App() {
     <div className="app">
       <Toolbar />
       <aside className="left">
-        <div className="panel-head">Layers</div>
-        <div className="panel-body"><Layers /></div>
-        <div className="panel-head">Activity</div>
-        <div className="panel-body activity-body"><Activity /></div>
+        <div className="tabs tabs-top" role="tablist">
+          <button role="tab" aria-selected={leftTab === 'layers'} className="tab" onClick={() => setState({ leftTab: 'layers' })}>Layers</button>
+          <button role="tab" aria-selected={leftTab === 'add'} className="tab" onClick={openAddPanel}>Add</button>
+        </div>
+        {leftTab === 'add' ? <AddPanel /> : (
+          <>
+            <div className="panel-body"><Layers /></div>
+            <div className="panel-head">Activity</div>
+            <div className="panel-body activity-body"><Activity /></div>
+          </>
+        )}
       </aside>
-      <main className="center"><Canvas /><DrawTools /></main>
+      <main className="center"><Canvas /><DrawTools /><SelectionTools /></main>
+      <RunOverlay />
       <aside className="right">
         <div className="tabs tabs-top" role="tablist">
           <button role="tab" aria-selected={tab === 'inspect'} className="tab" onClick={() => setTab('inspect')}>Inspect</button>
           <button role="tab" aria-selected={tab === 'review'} className="tab" onClick={() => setTab('review')}>
             Review{reviewCount > 0 && <span className="count count-info">{reviewCount}</span>}
           </button>
+          <button role="tab" aria-selected={tab === 'notes'} className="tab" onClick={() => setTab('notes')}>Notes</button>
           <button role="tab" aria-selected={tab === 'tokens'} className="tab" onClick={() => setTab('tokens')}>Tokens</button>
           <button role="tab" aria-selected={tab === 'lint'} className="tab" onClick={() => setTab('lint')}>
             Lint{lintCount > 0 && <span className="count">{lintCount}</span>}
@@ -228,6 +263,7 @@ export function App() {
         <div className="panel-body">
           {tab === 'inspect' && <Inspector />}
           {tab === 'review' && <ReviewPanel />}
+          {tab === 'notes' && <NotesPanel />}
           {tab === 'tokens' && <TokensPanel />}
           {tab === 'lint' && <LintPanel />}
         </div>

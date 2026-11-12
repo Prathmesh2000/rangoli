@@ -19,7 +19,14 @@ import { TokenResolver } from './tokens.js';
 import type { TokenTree } from './model.js';
 
 export type ProtoTrigger = 'click' | 'hover' | 'press' | 'delay' | 'key';
-export type ProtoAction = 'navigate' | 'overlay' | 'close' | 'back' | 'swap' | 'play';
+export type ProtoAction = 'navigate' | 'overlay' | 'close' | 'back' | 'swap' | 'play' | 'set' | 'toggle' | 'show' | 'hide';
+export type ProtoOp = '=' | '!=' | '>' | '<' | '>=' | '<=';
+
+export interface ProtoCondition {
+  name: string;
+  op: ProtoOp;
+  value: string;
+}
 export type TransitionType = 'instant' | 'dissolve' | 'slide' | 'push' | 'smart';
 
 export interface ProtoTransition {
@@ -35,13 +42,20 @@ export interface Interaction {
   key?: string;
   action: ProtoAction;
   target?: string;
+  /** swap: component axes. set: variable assignments */
   variant?: Record<string, string>;
   timeline?: string;
+  /** toggle: the boolean variable to flip */
+  variable?: string;
+  /** runs only when every condition holds */
+  when?: ProtoCondition[];
   transition: ProtoTransition;
 }
 
 export interface PrototypeData {
   start?: string;
+  /** starting values; every value is a string */
+  variables?: Record<string, string>;
   interactions: Record<string, Interaction[]>;
 }
 
@@ -57,7 +71,21 @@ export interface Timeline {
 }
 
 const TRIGGERS: ProtoTrigger[] = ['click', 'hover', 'press', 'delay', 'key'];
-const ACTIONS: ProtoAction[] = ['navigate', 'overlay', 'close', 'back', 'swap', 'play'];
+const ACTIONS: ProtoAction[] = ['navigate', 'overlay', 'close', 'back', 'swap', 'play', 'set', 'toggle', 'show', 'hide'];
+const INSTANT: ProtoAction[] = ['play', 'set', 'toggle', 'show', 'hide'];
+const unq = (v: string) => (v.startsWith('"') && v.endsWith('"') && v.length > 1 ? v.slice(1, -1).replace(/\\(.)/g, '$1') : v);
+const qv = (v: string) => (/[\s"]/.test(v) || v === '' ? JSON.stringify(v) : v);
+
+/** name=value pairs, for `proto var`. */
+export function parseProtoVars(toks: string[]): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const t of toks) {
+    const m = /^([a-zA-Z_][\w-]*)=(.*)$/.exec(t);
+    if (!m) return null;
+    out[m[1]!] = unq(m[2]!);
+  }
+  return out;
+}
 const TRANSITIONS: TransitionType[] = ['instant', 'dissolve', 'slide', 'push', 'smart'];
 
 // ---------------------------------------------------------------- parsing
@@ -66,7 +94,9 @@ export function parseProtoLines(lines: { no: number; toks: string[] }[], diag: D
   const out: Interaction[] = [];
   for (const { no, toks } of lines) {
     const err = (message: string) => diag.push({ line: no, severity: 'error', message });
-    const [trigTok, actionTok, ...rest] = toks;
+    const [trigTok, actionTok, ...afterAction] = toks;
+    const ifAt = afterAction.indexOf('if');
+    const rest = ifAt >= 0 ? afterAction.slice(0, ifAt) : afterAction;
     let m: RegExpExecArray | null;
     const it: Interaction = { trigger: 'click', action: 'navigate', transition: { type: 'dissolve', duration: 'base', easing: 'out' } };
     if ((m = /^delay:(\d+)(?:ms)?$/.exec(trigTok ?? ''))) { it.trigger = 'delay'; it.delay = Number(m[1]); }
@@ -77,11 +107,17 @@ export function parseProtoLines(lines: { no: number; toks: string[] }[], diag: D
     it.action = actionTok as ProtoAction;
     if (it.action === 'close' || it.action === 'back') it.transition.type = 'dissolve';
     if (it.action === 'swap') it.transition = { type: 'smart', duration: 'fast', easing: 'out' };
+    if (ifAt >= 0) {
+      const parts = afterAction.slice(ifAt + 1).filter((t) => t !== 'and');
+      const when = parts.map((t) => /^([a-zA-Z_][\w-]*)(!=|>=|<=|=|>|<)(.*)$/.exec(t));
+      if (!parts.length || when.some((c) => !c)) { err('Bad condition. Write it like: if plan=pro and seats>=2 (operators: = != > < >= <=)'); continue; }
+      it.when = when.map((c) => ({ name: c![1]!, op: c![2] as ProtoOp, value: unq(c![3]!) }));
+    }
     for (let i = 0; i < rest.length; i++) {
       const t = rest[i]!;
       if (t.startsWith('#')) { it.target = t.slice(1); continue; }
       if ((m = /^timeline:([\w-]+)$/.exec(t))) { it.timeline = m[1]; continue; }
-      if ((m = /^([\w-]+)=(.+)$/.exec(t))) { (it.variant ??= {})[m[1]!] = m[2]!; continue; }
+      if ((m = /^([\w-]+)=(.+)$/.exec(t))) { (it.variant ??= {})[m[1]!] = unq(m[2]!); continue; }
       if (TRANSITIONS.includes(t as TransitionType)) {
         it.transition.type = t as TransitionType;
         const dir = rest[i + 1];
@@ -90,11 +126,15 @@ export function parseProtoLines(lines: { no: number; toks: string[] }[], diag: D
       }
       if (/^(instant|fast|base|slow|panel)$/.test(t) || /^\d+ms$/.test(t)) { it.transition.duration = t; continue; }
       if (/^(out|in|inOut|drawer|linear)$/.test(t) || /^spring:[\w-]+$/.test(t)) { it.transition.easing = t; continue; }
+      if (it.action === 'toggle' && !it.variable && /^[a-zA-Z_][\w-]*$/.test(t)) { it.variable = t; continue; }
       err(`Unexpected "${t}" in interaction`);
     }
     if ((it.action === 'navigate' || it.action === 'overlay') && !it.target) err(`${it.action} needs a target frame: ${it.action} #frameId`);
     if (it.action === 'swap' && !it.variant) err('swap needs a variant, e.g. swap variant=secondary');
     if (it.action === 'play' && !it.timeline) err('play needs a timeline, e.g. play timeline:success');
+    if (it.action === 'set' && !it.variant) err('set needs a value, e.g. set plan=pro or set count=+1');
+    if ((it.action === 'show' || it.action === 'hide') && !it.target) err(`${it.action} needs a layer: ${it.action} #layerId`);
+    if (it.action === 'toggle' && !it.target && !it.variable) err('toggle needs a layer or a variable: toggle #panel or toggle agreed');
     if ((it.transition.type === 'slide' || it.transition.type === 'push') && !it.transition.direction) it.transition.direction = 'left';
     out.push(it);
   }
@@ -121,12 +161,14 @@ function interactionLine(it: Interaction): string {
   const trig = it.trigger === 'delay' ? `delay:${it.delay}` : it.trigger === 'key' ? `key:${it.key}` : it.trigger;
   const parts = [trig, it.action];
   if (it.target) parts.push(`#${it.target}`);
-  for (const [k, v] of Object.entries(it.variant ?? {})) parts.push(`${k}=${v}`);
+  for (const [k, v] of Object.entries(it.variant ?? {})) parts.push(`${k}=${qv(v)}`);
+  if (it.variable) parts.push(it.variable);
   if (it.timeline) parts.push(`timeline:${it.timeline}`);
-  if (it.action !== 'play') {
+  if (!INSTANT.includes(it.action)) {
     parts.push(it.transition.type + (it.transition.direction ? ` ${it.transition.direction}` : ''));
     parts.push(it.transition.duration, it.transition.easing);
   }
+  if (it.when?.length) parts.push('if', it.when.map((c) => `${c.name}${c.op}${qv(c.value)}`).join(' and '));
   return parts.join(' ');
 }
 
@@ -142,6 +184,7 @@ export function serializePrototype(p: PrototypeData | undefined, timelines: Reco
       out.push(`  #${t.target} ${t.at} ${tracks.join(', ')} ${s.duration} ${s.easing}`);
     }
   }
+  if (p?.variables && Object.keys(p.variables).length && !nodes) out.push(`proto var ${Object.entries(p.variables).map(([k, v]) => `${k}=${qv(v)}`).join(' ')}`);
   if (p?.start && !nodes) out.push(`proto start #${p.start}`);
   for (const [node, list] of Object.entries(p?.interactions ?? {})) {
     if (nodes && !nodes.includes(node)) continue;

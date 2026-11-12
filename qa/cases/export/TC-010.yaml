@@ -1,0 +1,18 @@
+id: TC-010
+feature: export
+title: Standalone render keeps motion with no global reduced-motion switch
+priority: P2
+level: unit
+tags:
+  - regression
+covers:
+  - AC-1
+  - AC-5
+steps:
+  - Render a standalone document that has motion
+expected:
+  - Output includes the motion CSS
+  - Output has no global reduced-motion kill switch
+automation:
+  node: packages/engine/src/motion.test.ts#standalone render includes motion and
+    no global reduced-motion kill switch

@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Rangoli render service. Chromium in its own Fargate task, in subnets with no route to the internet. The task has no IAM
+  role, no database access and no outbound path except the AWS endpoints Fargate needs to start it. Only the app can call it.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: Image built from Dockerfile.render, e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/rangoli-render:v1
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC of the app stack
+  AppSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: The app tasks' security group. The only caller allowed.
+  S3PrefixListId:
+    Type: String
+    AllowedPattern: '^pl-[0-9a-f]+$'
+    Description: >-
+      The managed prefix list for S3 in this region, needed to pull image layers. Find it with
+      aws ec2 describe-managed-prefix-lists --filters Name=prefix-list-name,Values=com.amazonaws.REGION.s3
+  SubnetCidrA:
+    Type: String
+    Default: 10.40.20.0/24
+  SubnetCidrB:
+    Type: String
+    Default: 10.40.21.0/24
+  ChromiumSandbox:
+    Type: String
+    Default: required
+    AllowedValues: [required, microvm-only]
+    Description: >-
+      required stops the service if Chromium's own sandbox cannot start. microvm-only accepts running without it, relying on
+      the Fargate microVM, the empty task role and closed egress, and restarts Chromium after every job.
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: One request token can be spent once per task, so keep this at 1 until spent tokens are shared.
+  TaskCpu:
+    Type: Number
+    Default: 1024
+  TaskMemory:
+    Type: Number
+    Default: 3072
+
+Conditions:
+  AllowNoSandbox: !Equals [!Ref ChromiumSandbox, microvm-only]
+
+Resources:
+  # ------------------------------------------------------------ network: no internet route, no NAT
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: !Ref SubnetCidrA
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: !Ref SubnetCidrB
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref VpcId }
+  SubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubnetA, RouteTableId: !Ref RouteTable }
+  SubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubnetB, RouteTableId: !Ref RouteTable }
+
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Render tasks. Called by the app; can reach only AWS endpoints for startup.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 4500, ToPort: 4500, SourceSecurityGroupId: !Ref AppSecurityGroupId }
+      # replaces the default allow-all rule; rules below add the two paths Fargate needs
+      SecurityGroupEgress:
+        - { IpProtocol: icmp, FromPort: -1, ToPort: -1, CidrIp: 127.0.0.1/32, Description: Placeholder that denies all other egress }
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AWS endpoints used to start render tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, SourceSecurityGroupId: !Ref TaskSecurityGroup }
+      SecurityGroupEgress:
+        - { IpProtocol: icmp, FromPort: -1, ToPort: -1, CidrIp: 127.0.0.1/32, Description: Placeholder that denies all egress }
+  TaskToEndpoints:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref TaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationSecurityGroupId: !Ref EndpointSecurityGroup
+  TaskToS3:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref TaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationPrefixListId: !Ref S3PrefixListId
+
+  # image layers come from an AWS-owned bucket; nothing else is reachable through this endpoint
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref RouteTable]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::prod-${AWS::Region}-starport-layer-bucket/*
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+  EcrDockerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+  SecretsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  # the app reaches the service at render.<stack>.internal
+  Namespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: !Sub ${AWS::StackName}.internal
+      Vpc: !Ref VpcId
+  DiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: render
+      NamespaceId: !GetAtt Namespace.Id
+      DnsConfig:
+        DnsRecords: [{ Type: A, TTL: 10 }]
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig: { FailureThreshold: 1 }
+
+  # ------------------------------------------------------------ the one credential: checks that requests came from the app
+  SigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Signs render requests from the app
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  # ------------------------------------------------------------ service
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  Cluster:
+    Type: AWS::ECS::Cluster
+  # used by ECS to pull the image and read one secret; the running task gets no role at all
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-signing-secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref SigningSecret
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-render
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      Volumes:
+        - { Name: tmp }
+      ContainerDefinitions:
+        - Name: render
+          Image: !Ref ImageUri
+          Essential: true
+          User: node
+          ReadonlyRootFilesystem: true
+          MountPoints:
+            - { SourceVolume: tmp, ContainerPath: /tmp, ReadOnly: false }
+          LinuxParameters:
+            InitProcessEnabled: true
+            Capabilities: { Drop: [ALL] }
+          PortMappings: [{ ContainerPort: 4500 }]
+          Environment:
+            - !If [AllowNoSandbox, { Name: RENDER_ALLOW_NO_SANDBOX, Value: '1' }, !Ref AWS::NoValue]
+          Secrets:
+            - { Name: RENDER_SIGNING_SECRET, ValueFrom: !Ref SigningSecret }
+          HealthCheck:
+            Command: [CMD-SHELL, "node -e \"fetch('http://127.0.0.1:4500/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))\""]
+            Interval: 15
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: render
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [EcrApiEndpoint, EcrDockerEndpoint, LogsEndpoint, SecretsEndpoint, S3Endpoint, TaskToEndpoints, TaskToS3]
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      ServiceRegistries:
+        - RegistryArn: !GetAtt DiscoveryService.Arn
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: [!Ref SubnetA, !Ref SubnetB]
+          SecurityGroups: [!Ref TaskSecurityGroup]
+
+Outputs:
+  RenderServiceUrl:
+    Description: Set as RENDER_SERVICE_URL on the app
+    Value: !Sub http://render.${AWS::StackName}.internal:4500
+  SigningSecretArn:
+    Description: Give to the app as RENDER_SIGNING_SECRET
+    Value: !Ref SigningSecret

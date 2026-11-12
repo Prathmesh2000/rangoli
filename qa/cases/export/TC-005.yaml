@@ -1,0 +1,18 @@
+id: TC-005
+feature: export
+title: Paint values never emit raw document strings
+priority: P1
+level: unit
+technique: equivalence partitioning
+tags:
+  - regression
+  - security
+covers:
+  - AC-3
+steps:
+  - Pass a colour value containing a style-closing script tag to paintCss
+expected:
+  - paintCss returns "transparent"
+automation:
+  node: packages/engine/src/security.test.ts#paintCss never emits raw document
+    strings

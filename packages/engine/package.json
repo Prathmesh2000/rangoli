@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./icon-pack": {
+      "types": "./dist/icon-pack.d.ts",
+      "default": "./dist/icon-pack.js"
+    },
     "./io": {
       "types": "./dist/io.d.ts",
       "default": "./dist/io.js"

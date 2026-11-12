@@ -1,0 +1,479 @@
+# Migrations run as a separate one-off task, so the app never holds the database owner password.
+# CloudFormation does not run tasks; the MigrateCommand stack output prints the command to start one.
+# Wait for it (aws ecs wait tasks-stopped) and confirm its exit code is 0 before moving on.
+#
+# First install, or the first upgrade from a template that migrated at boot (the old image cannot start without
+# the owner password, so it must not run under this template):
+#   1. deploy with ImageUri=<new> AppDesiredCount=0   2. run MigrateCommand   3. deploy with AppDesiredCount=1
+# Every later release, keeping the old version serving while the schema expands:
+#   1. deploy with MigrateImageUri=<new>              2. run MigrateCommand   3. deploy with ImageUri=<new> MigrateImageUri=''
+# A new image refuses to start until its migrations have been applied.
+#
+# Screenshots run in a separate render stack, which needs this stack's VpcId and AppSecurityGroupId outputs:
+#   1. deploy this stack (on a first install, with AppDesiredCount=0 and ARN-shaped placeholders for the two Render
+#      parameters; no app task starts, so nothing reads them)   2. deploy the render stack
+#   3. deploy this stack again with RenderServiceUrl and RenderSigningSecretArn from the render stack
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Rangoli team app. ALB (HTTPS) -> one ECS Fargate task -> RDS PostgreSQL, with images in S3 and mail through SES.
+  One task on purpose: open designs live in the app process, and a database lock stops a second one from writing.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: Container image built from the repository Dockerfile, e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/rangoli:v1
+  DomainName:
+    Type: String
+    Description: Public host name, e.g. design.example.com. Point its DNS at the LoadBalancerDns output.
+  CertificateArn:
+    Type: String
+    Description: ACM certificate for DomainName, in this region
+  MigrateImageUri:
+    Type: String
+    Default: ''
+    Description: Image for the migrate task when it should differ from ImageUri, during a release. Empty uses ImageUri.
+  AppDesiredCount:
+    Type: Number
+    Default: 1
+    AllowedValues: [0, 1]
+    Description: 0 until the migrate task has run on a new database; otherwise 1. More than one is unsafe, see the service below.
+  RenderServiceUrl:
+    Type: String
+    AllowedPattern: '^https?://.+'
+    Description: Base URL of the isolated render service, from the render stack
+  RenderSigningSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws[a-z-]*:secretsmanager:.+'
+    Description: Secrets Manager ARN of the secret that signs requests to the render service, from the render stack
+  SesFromAddress:
+    Type: String
+    Default: ''
+    Description: Verified SES sender for invites, reviews and password resets. Empty turns email off.
+  InviteOnly:
+    Type: String
+    Default: '1'
+    AllowedValues: ['0', '1']
+    Description: '1 means new accounts need an invite (the very first account does not)'
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.small
+  DatabaseMultiAz:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  TaskCpu:
+    Type: Number
+    Default: 1024
+  TaskMemory:
+    Type: Number
+    Default: 3072
+
+Conditions:
+  HasSes: !Not [!Equals [!Ref SesFromAddress, '']]
+  HasMigrateImage: !Not [!Equals [!Ref MigrateImageUri, '']]
+
+Resources:
+  # ------------------------------------------------------------ network
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.40.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Ref AWS::StackName }]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+  PublicSubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable }
+  # image traffic stays on the AWS network
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PublicRouteTable]
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public web traffic
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+  # the task has a public IP for outbound calls only; nothing can reach it except the load balancer.
+  # Egress is the default allow-all, which already covers TCP 4500 to the render service; restrict it here if needed.
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App tasks, reachable only from the load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 4400, ToPort: 4400, SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup }
+  # the one-off migrate task: nothing connects to it
+  MigrateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Migrate task, no inbound access
+      VpcId: !Ref Vpc
+  # the description predates the migrate task; changing it would replace this group
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Postgres, reachable only from the app
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref AppSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref MigrateSecurityGroup }
+
+  # ------------------------------------------------------------ data
+  DatabaseSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets with no route to the internet
+      SubnetIds: [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: '17'
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: rangoli
+      AllocatedStorage: '20'
+      MaxAllocatedStorage: 200
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: !Ref DatabaseMultiAz
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DatabaseSubnets
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      MasterUsername: rangoli_owner
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 14
+      DeletionProtection: true
+      EnablePerformanceInsights: false
+  # what the app logs in with; the master password is available only to the migrate task
+  AppDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Password for rangoli_login
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"rangoli_login"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpiration: { NoncurrentDays: 30 }
+            ExpiredObjectDeleteMarker: true
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 2 }
+  ImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImageBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: TlsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ImageBucket.Arn
+              - !Sub ${ImageBucket.Arn}/*
+            Condition:
+              Bool: { aws:SecureTransport: 'false' }
+
+  # ------------------------------------------------------------ app
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  Cluster:
+    Type: AWS::ECS::Cluster
+  # used by ECS to start the app: pull the image, read the app's secret and nothing else
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-database-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !Ref RenderSigningSecretArn
+  # used by ECS to start the migrate task, the only holder of the master password
+  MigrateExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-database-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !GetAtt Database.MasterUserSecret.SecretArn
+                  - !Ref AppDatabaseSecret
+  # used by the running app: this bucket, and sending from this address
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      Policies:
+        - PolicyName: images
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub ${ImageBucket.Arn}/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ImageBucket.Arn
+        - !If
+          - HasSes
+          - PolicyName: mail
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: ses:SendEmail
+                  Resource: '*'
+                  Condition:
+                    StringEquals: { ses:FromAddress: !Ref SesFromAddress }
+          - !Ref AWS::NoValue
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref AWS::StackName
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: rangoli
+          Image: !Ref ImageUri
+          Essential: true
+          StopTimeout: 60
+          PortMappings: [{ ContainerPort: 4400 }]
+          Environment:
+            - { Name: DB_HOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: DB_PORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: DB_NAME, Value: rangoli }
+            - { Name: S3_BUCKET, Value: !Ref ImageBucket }
+            - { Name: AWS_REGION, Value: !Ref AWS::Region }
+            - { Name: RANGOLI_PUBLIC_URL, Value: !Sub 'https://${DomainName}' }
+            - { Name: RANGOLI_INVITE_ONLY, Value: !Ref InviteOnly }
+            - { Name: RENDER_SERVICE_URL, Value: !Ref RenderServiceUrl }
+            - !If [HasSes, { Name: SES_FROM, Value: !Ref SesFromAddress }, !Ref AWS::NoValue]
+          Secrets:
+            - { Name: DB_APP_PASSWORD, ValueFrom: !Sub '${AppDatabaseSecret}:password::' }
+            - { Name: RENDER_SIGNING_SECRET, ValueFrom: !Ref RenderSigningSecretArn }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: app
+
+  # runs to completion and exits; it has no task role because migrations call no AWS API
+  MigrateTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-migrate'
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt MigrateExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: migrate
+          Image: !If [HasMigrateImage, !Ref MigrateImageUri, !Ref ImageUri]
+          Essential: true
+          Command: [node, packages/server/dist/cli.js, migrate]
+          Environment:
+            - { Name: DB_HOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: DB_PORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: DB_NAME, Value: rangoli }
+            - { Name: DB_OWNER_USER, Value: rangoli_owner }
+          Secrets:
+            - { Name: DB_OWNER_PASSWORD, ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::' }
+            - { Name: DB_APP_PASSWORD, ValueFrom: !Sub '${AppDatabaseSecret}:password::' }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migrate
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: GatewayAttachment
+    Properties:
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      LoadBalancerAttributes:
+        # live event streams ping every 25 seconds
+        - { Key: idle_timeout.timeout_seconds, Value: '120' }
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: 'true' }
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 4400
+      # liveness, not /readyz: replacing the single writer would not fix a database outage
+      HealthCheckPath: /healthz
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 4
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: '15' }
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTPS
+      Port: 443
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates: [{ CertificateArn: !Ref CertificateArn }]
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig: { Protocol: HTTPS, Port: '443', StatusCode: HTTP_301 }
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [HttpsListener]
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref AppDesiredCount
+      HealthCheckGracePeriodSeconds: 180
+      # the old task must stop before the new one can take the writer lock, so a deploy has a short outage
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+          SecurityGroups: [!Ref AppSecurityGroup]
+      LoadBalancers:
+        - { ContainerName: rangoli, ContainerPort: 4400, TargetGroupArn: !Ref TargetGroup }
+
+Outputs:
+  VpcId:
+    Description: For the render stack
+    Value: !Ref Vpc
+  AppSecurityGroupId:
+    Description: For the render stack, to admit the app on TCP 4500
+    Value: !Ref AppSecurityGroup
+  LoadBalancerDns:
+    Description: Point DomainName here (CNAME, or a Route 53 alias)
+    Value: !GetAtt LoadBalancer.DNSName
+  ImageBucketName:
+    Value: !Ref ImageBucket
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  MigrateCommand:
+    Description: Starts the migrate task. Run it before a new app image is deployed.
+    Value: !Sub >-
+      aws ecs run-task --region ${AWS::Region} --cluster ${Cluster} --task-definition ${MigrateTaskDefinition}
+      --launch-type FARGATE --network-configuration
+      'awsvpcConfiguration={subnets=[${PublicSubnetA},${PublicSubnetB}],securityGroups=[${MigrateSecurityGroup}],assignPublicIp=ENABLED}'

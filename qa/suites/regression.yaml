@@ -1,0 +1,5 @@
+id: regression
+description: Everything that must keep working before a release
+select:
+  tags_any:
+    - regression

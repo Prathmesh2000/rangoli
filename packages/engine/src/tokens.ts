@@ -1,5 +1,6 @@
 import { generateNeutralRamp, generateRamp, RAMP_STEPS } from './color.js';
 import { isTokenLeaf, type TokenLeaf, type TokenTree } from './model.js';
+import { isSafeCssValue, isSafeKey, tokenModeError, tokenPathError } from './safety.js';
 
 export type Mode = string; // 'light' | 'dark' | 'highContrast' | 'reduced' ...
 
@@ -36,8 +37,10 @@ const ALIAS = /^\{([^}]+)\}$/;
 
 export class TokenResolver {
   readonly flat: Map<string, FlatToken>;
+  readonly themes: Record<string, { base: string }>;
   constructor(tree: TokenTree) {
     this.flat = flattenTokens(tree);
+    this.themes = (tree as { $extensions?: { rangoli?: { themes?: Record<string, { base: string }> } } }).$extensions?.rangoli?.themes ?? {};
   }
 
   has(path: string): boolean {
@@ -50,7 +53,9 @@ export class TokenResolver {
     if (!t) return undefined;
     if (seen.has(path)) throw new Error(`Token alias cycle at ${path}`);
     seen.add(path);
-    const raw = t.modes && mode in t.modes ? t.modes[mode] : t.value;
+    // a custom theme falls back to its base mode, then to the default value
+    const base = this.themes[mode]?.base;
+    const raw = t.modes && Object.hasOwn(t.modes, mode) ? t.modes[mode] : base && t.modes && Object.hasOwn(t.modes, base) ? t.modes[base] : t.value;
     return this.resolveValue(raw, mode, seen);
   }
 
@@ -102,16 +107,20 @@ export class TokenResolver {
   }
 }
 
-export const cssVarName = (path: string) => `--${path.replace(/\./g, '-')}`;
+/** Anything that is not a name character becomes "-", so a stored path cannot break out of var(). */
+export const cssVarName = (path: string) => `--${path.replace(/[^\p{L}\p{N}_-]/gu, '-')}`;
 
 /** Export tokens as CSS custom properties, one block per mode. */
-export function tokensToCss(tree: TokenTree, modes: Mode[] = ['light', 'dark']): string {
+export function tokensToCss(tree: TokenTree, modes?: Mode[]): string {
   const r = new TokenResolver(tree);
+  modes = (modes ?? ['light', 'dark', ...Object.keys(r.themes)]).filter((m) => !tokenModeError(m)); // mode names become selectors
+  const light = (p: string) => JSON.stringify(r.resolve(p, 'light'));
   const blocks: string[] = [];
   modes.forEach((mode, i) => {
     const lines: string[] = [];
     for (const t of r.flat.values()) {
-      if (i > 0 && !(t.modes && mode in t.modes) && !dependsOnMode(r, t.path, mode)) continue;
+      if (r.themes[mode]) { if (JSON.stringify(r.resolve(t.path, mode)) === light(t.path)) continue; }
+      else if (i > 0 && !(t.modes && mode in t.modes) && !dependsOnMode(r, t.path, mode)) continue;
       const v = r.resolve(t.path, mode);
       const css = tokenValueToCss(v, t.type);
       if (css !== undefined) lines.push(`  ${cssVarName(t.path)}: ${css};`);
@@ -141,7 +150,13 @@ export function fontStack(list: string[]): string {
   return list.map((f) => (GENERIC_FONTS.has(f) || f.startsWith('-') || /^[A-Za-z][\w-]*$/.test(f) ? f : `"${f.replace(/"/g, '')}"`)).join(', ');
 }
 
+/** CSS for a resolved token value. Values that are unsafe in a <style> element are dropped. */
 export function tokenValueToCss(v: unknown, type?: string): string | undefined {
+  const css = rawTokenCss(v, type);
+  return css !== undefined && isSafeCssValue(css) ? css : undefined;
+}
+
+function rawTokenCss(v: unknown, type?: string): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (type === 'dimension' && typeof v === 'number') return `${v}px`;
   if (type === 'duration' && typeof v === 'number') return `${v}ms`;
@@ -155,6 +170,102 @@ export function tokenValueToCss(v: unknown, type?: string): string | undefined {
   }
   if (typeof v === 'number') return String(v);
   if (typeof v === 'string') return v;
+  return undefined;
+}
+
+// ---------------- validating token writes ----------------
+
+const TOKEN_KEY = /^[\p{L}\p{N}_.-]+$/u; // scale steps such as "0.5" are single keys
+const FONT_NAME = /^[^<>\\{};"\x00-\x1f]+$/;
+const TOKEN_VALUE: Record<string, RegExp> = {
+  color: /^(#[0-9a-f]{3,8}|[a-z]+|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark|var)\(.+\))$/i,
+  dimension: /^(-?(\d+\.?\d*|\.\d+)[a-z%]*|[a-z-]+|(?:calc|min|max|clamp|var)\(.+\))$/i,
+  duration: /^((\d+\.?\d*|\.\d+)m?s|var\(.+\))$/i,
+  number: /^(-?(\d+\.?\d*|\.\d+)|var\(.+\))$/i,
+  fontWeight: /^(\d{1,4}|[a-z-]+|var\(.+\))$/i,
+  fontFamily: /^[\p{L}\p{N}\s,'"_.()-]+$/u,
+  shadow: /^[\w\s.,%#()/-]+$/,
+};
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const clip = (s: string) => (s.length > 80 ? `${s.slice(0, 80)}…` : s);
+
+function deepKeyError(v: unknown): string | undefined {
+  if (!isObj(v)) return undefined;
+  for (const [k, x] of Object.entries(v)) {
+    if (!isSafeKey(k)) return `"${k}" is a reserved name`;
+    const e = deepKeyError(x);
+    if (e) return e;
+  }
+  return undefined;
+}
+
+function tokenValueError(v: unknown, type?: string): string | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? undefined : 'must be a finite number';
+  if (v === null || typeof v === 'boolean') return undefined;
+  if (typeof v === 'string') {
+    const alias = ALIAS.exec(v);
+    if (alias) return tokenPathError(alias[1]!);
+    if (!isSafeCssValue(v)) return `"${clip(v)}" is not a safe CSS value`;
+    const shape = type ? TOKEN_VALUE[type] : undefined;
+    return shape && !shape.test(v) ? `"${clip(v)}" is not a valid ${type}` : undefined;
+  }
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      // font lists are quoted on output, so a name may hold an apostrophe
+      const e = type === 'fontFamily' && typeof x === 'string' && !ALIAS.test(x) ? (FONT_NAME.test(x) ? undefined : `"${clip(x)}" is not a valid font name`) : tokenValueError(x);
+      if (e) return e;
+    }
+    return undefined;
+  }
+  if (isObj(v)) {
+    for (const x of Object.values(v)) {
+      const e = tokenValueError(x);
+      if (e) return e;
+    }
+    return undefined;
+  }
+  return 'has an unsupported type';
+}
+
+function tokenLeafError(path: string, leaf: TokenLeaf, type?: string): string | undefined {
+  const keys = deepKeyError(leaf);
+  if (keys) return `Token ${path}: ${keys}`;
+  const value = tokenValueError(leaf.$value, type);
+  if (value) return `Token ${path}: ${value}`;
+  for (const [mode, v] of Object.entries(leaf.$extensions?.rangoli?.modes ?? {})) {
+    const e = tokenModeError(mode) ?? tokenValueError(v, type);
+    if (e) return `Token ${path} [${clip(mode)}]: ${e}`;
+  }
+  return undefined;
+}
+
+/**
+ * Why a token tree cannot be stored, or undefined when it can. Only what differs from `prev` is checked,
+ * so a value saved before validation existed cannot block edits to other tokens.
+ */
+export function tokenTreeError(tree: TokenTree, prev?: TokenTree, path = '', inherited?: string): string | undefined {
+  const node = tree as unknown as Record<string, unknown>;
+  const groupType = typeof node.$type === 'string' ? node.$type : inherited;
+  for (const [key, val] of Object.entries(node)) {
+    const before = isObj(prev) && Object.hasOwn(prev, key) ? (prev as unknown as Record<string, unknown>)[key] : undefined;
+    if (JSON.stringify(val) === JSON.stringify(before)) continue;
+    const where = path ? `${path}.${key}` : key;
+    if (!isSafeKey(key)) return `Token key "${where}" uses a reserved name`;
+    if (key.startsWith('$')) {
+      const e = deepKeyError(val);
+      if (e) return `${where}: ${e}`;
+      continue;
+    }
+    if (!TOKEN_KEY.test(key)) return `Token key "${clip(where)}" is invalid (use letters, numbers, _ and -)`;
+    if (isTokenLeaf(val)) {
+      const e = tokenLeafError(where, val, val.$type ?? groupType);
+      if (e) return e;
+    } else if (isObj(val)) {
+      const e = tokenTreeError(val as unknown as TokenTree, before as TokenTree | undefined, where, groupType);
+      if (e) return e;
+    }
+  }
   return undefined;
 }
 

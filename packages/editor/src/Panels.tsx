@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LANGUAGES, contrastRatio, fontStack, languageOf, languageTokens, RAMP_STEPS, TokenResolver, wcagLevel, type RangoliDocument } from '@rangoli/engine';
 import { TextInput } from './controls';
+import { ThemeManager, FontTokens } from './ThemePanel';
 import { authorLabel, getState, rdl, select, setBrand, useEditor } from './store';
 
 // ------------------------------------------------------------------ tokens
@@ -17,7 +18,7 @@ const shown = (v: unknown) => (Array.isArray(v) ? v.join(', ') : String(v ?? '')
 /** Write one token, for the active mode only (dark edits leave the light value alone). */
 function writeToken(doc: RangoliDocument, path: string, value: string, mode: string) {
   if (!value) return;
-  const script = mode === 'dark' ? `token ${path} ${tokenArg(shown(rawToken(doc, path)))} dark=${tokenArg(value)}` : `token ${path} ${tokenArg(value)}`;
+  const script = mode !== 'light' ? `token ${path} ${tokenArg(shown(rawToken(doc, path)))} ${mode}=${tokenArg(value)}` : `token ${path} ${tokenArg(value)}`;
   void rdl(script, `token ${path}`);
 }
 
@@ -81,12 +82,14 @@ export function TokensPanel() {
   return (
     <div className="tokens" data-v={version}>
       <LanguageGallery doc={doc} />
+      <ThemeManager doc={doc} />
+      <FontTokens doc={doc} />
       <section className="section">
         <h3 className="section-title">Brand</h3>
         <form className="brand-row" onSubmit={(e) => { e.preventDefault(); if (/^#[0-9a-fA-F]{6}$/.test(brand)) void setBrand(brand); }}>
           <input type="color" aria-label="Pick brand color" value={/^#[0-9a-fA-F]{6}$/.test(brand) ? brand : currentBrand} onChange={(e) => setBrandDraft(e.target.value)} />
           <input className="input" placeholder={currentBrand} value={brand} onChange={(e) => setBrandDraft(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-          <button className="btn" type="submit" disabled={!/^#[0-9a-fA-F]{6}$/.test(brand)}>Regenerate</button>
+          <button className="btn" type="submit" disabled={!/^#[0-9a-fA-F]{6}$/.test(brand)}>Rebuild ramps</button>
         </form>
         <p className="hint">Rebuilds every ramp and semantic token in OKLCH, for light and dark. Undoable.</p>
       </section>
@@ -137,7 +140,6 @@ export function TokensPanel() {
 
       <ScalarTokens title="Corner radius" doc={doc} mode="light" unit="px" paths={r.group('radius').map((t) => t.path).filter((x) => x !== 'radius.0')} />
       <ScalarTokens title="Control heights" doc={doc} mode="light" unit="px" paths={r.group('size').map((t) => t.path)} />
-      <ScalarTokens title="Fonts" doc={doc} mode="light" paths={r.group('font.family').map((t) => t.path)} />
       <ScalarTokens title={`Shadows · ${mode}`} doc={doc} mode={mode} paths={r.group('shadow').map((t) => t.path)} />
       <ScalarTokens title="Motion durations" doc={doc} mode="light" unit="ms" paths={r.group('motion.duration').map((t) => t.path).filter((x) => x !== 'motion.duration.instant')} />
 

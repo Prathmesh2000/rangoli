@@ -1,0 +1,16 @@
+id: TC-013
+feature: export
+title: Prototype timelines export as class-triggered keyframes
+priority: P2
+level: unit
+tags:
+  - regression
+covers:
+  - AC-6
+steps:
+  - Export a prototype with a timeline
+expected:
+  - Timelines are class-triggered keyframes with reduced variants
+automation:
+  node: packages/engine/src/prototype.test.ts#timelines export as class-triggered
+    keyframes with reduced variants

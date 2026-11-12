@@ -1,0 +1,20 @@
+{
+  "name": "@rangoli/figma-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Figma plugin that exports selected pages and frames to Rangoli as versioned, schema-validated JSON",
+  "type": "module",
+  "exports": {
+    "./schema": {
+      "types": "./dist/schema/schema.d.ts",
+      "default": "./dist/schema/schema.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs && tsc -p tsconfig.schema.json",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

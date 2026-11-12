@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ColorPopover } from './ColorPicker';
 import type { Opt } from './helpers';
 import { getState, rdl } from './store';
 
@@ -71,51 +73,58 @@ export function TextInput({ value, onCommit, small, placeholder, label }: { valu
   );
 }
 
-/** Free-text field with token suggestions: tokens are one click away, any value is allowed. */
+/** Free-text field with a suggestion list: tokens are one click away, any value is allowed. */
 export function Combo({ value, options, onCommit, placeholder, label, small }: { value: string; options: Opt[]; onCommit: (v: string) => void; placeholder?: string; label?: string; small?: boolean }) {
-  const id = useId();
   const [v, setV] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [typed, setTyped] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const input = useRef<HTMLInputElement>(null);
   useEffect(() => setV(value), [value]);
-  const commit = (next: string) => { if (next !== value) onCommit(next.trim()); };
+  const commit = (next: string) => { if (next.trim() !== value) onCommit(next.trim()); };
+  const list = typed && v ? options.filter((o) => `${o.value} ${o.label}`.toLowerCase().includes(v.toLowerCase())) : options;
+  const show = () => { setRect(input.current?.getBoundingClientRect() ?? null); setOpen(true); setActive(-1); };
+  const pick = (o: Opt) => { setV(o.value); setOpen(false); setTyped(false); commit(o.value); };
   return (
     <>
-      <input className={`input${small ? ' input-sm' : ''}`} list={id} value={v} placeholder={placeholder} aria-label={label}
-        onChange={(e) => {
-          setV(e.target.value);
-          // picking from the suggestion list applies at once; typing waits for Enter or blur
-          if (options.some((o) => o.value === e.target.value) && (e.nativeEvent as InputEvent).inputType !== 'insertText') commit(e.target.value);
-        }}
-        onBlur={() => commit(v)}
+      <input ref={input} role="combobox" aria-expanded={open} className={`input${small ? ' input-sm' : ''}`} value={v} placeholder={placeholder} aria-label={label}
+        onFocus={show} onClick={show}
+        onChange={(e) => { setV(e.target.value); setTyped(true); if (!open) show(); }}
+        onBlur={() => { setOpen(false); setTyped(false); commit(v); }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur();
-          if (e.key === 'Escape') setV(value);
           e.stopPropagation();
+          if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) show(); setActive((a) => Math.min(list.length - 1, a + 1)); }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+          if (e.key === 'Enter') { if (open && list[active]) { e.preventDefault(); pick(list[active]!); } else e.currentTarget.blur(); }
+          if (e.key === 'Escape') { setV(value); setOpen(false); }
         }} />
-      <datalist id={id}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</datalist>
+      {open && rect && list.length > 0 && createPortal(
+        <div className="combo-list" role="listbox" style={{ left: rect.left, top: rect.bottom + 2, minWidth: Math.max(rect.width, 150) }} onPointerDown={(e) => e.preventDefault()}>
+          {list.slice(0, 200).map((o, i) => (
+            <button key={o.value} role="option" aria-selected={i === active} className={`combo-opt${i === active ? ' is-active' : ''}`} onClick={() => pick(o)}>
+              {o.swatch && <span className="swatch" style={{ background: o.swatch }} />}<span>{o.label}</span>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
     </>
   );
 }
 
-/** Colour: native picker for any custom colour + free-text field with token suggestions (token~alpha, #hex). */
-export function ColorField({ value, options, onCommit, swatch, placeholder, label }: { value: string; options: Opt[]; onCommit: (v: string) => void; swatch?: string; placeholder?: string; label?: string }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const commit = useRef(onCommit);
-  commit.current = onCommit;
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // the native "change" event fires once when the picker closes (React's onChange fires while dragging)
-    const fn = () => commit.current(el.value);
-    el.addEventListener('change', fn);
-    return () => el.removeEventListener('change', fn);
-  }, []);
-  const hex = swatch && /^#[0-9a-f]{6}$/i.test(swatch) ? swatch : '#808080';
+/** Colour: opens the full picker; the text field still takes any token, #hex or token~alpha. */
+export function ColorField({ value, options, onCommit, swatch: given, placeholder, label, allowNone, live }: { value: string; options: Opt[]; onCommit: (v: string) => void; swatch?: string; placeholder?: string; label?: string; allowNone?: boolean; live?: string }) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const bare = value.replace(/~\d+$/, '');
+  const swatch = given ?? (/^#[0-9a-f]{6}$/i.test(bare) ? bare : options.find((o) => o.value === bare)?.swatch);
   return (
     <div className="color-select">
-      <label className="swatch swatch-pick" style={{ background: swatch ?? 'transparent' }} data-empty={!swatch} title="Pick any colour">
-        <input ref={ref} type="color" key={hex} defaultValue={hex} aria-label={`${label ?? 'Colour'} picker`} />
-      </label>
+      <button ref={trigger} className="swatch swatch-pick" style={{ background: swatch ?? 'transparent' }} data-empty={!swatch} aria-label={`${label ?? 'Colour'} picker`} aria-haspopup="dialog" title="Open colour picker"
+        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} />
       <Combo value={value} options={options} onCommit={onCommit} placeholder={placeholder} label={label} />
+      {anchor && <ColorPopover anchor={anchor} value={value} swatch={swatch} options={options} allowNone={allowNone} live={live} onCommit={onCommit} onClose={() => { setAnchor(null); trigger.current?.focus(); }} />}
     </div>
   );
 }

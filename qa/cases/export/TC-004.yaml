@@ -1,0 +1,20 @@
+id: TC-004
+feature: export
+title: Malicious stored values are dropped when rendering
+priority: P1
+level: unit
+tags:
+  - regression
+  - security
+covers:
+  - AC-3
+steps:
+  - Store a document with script tags and external URLs in style values
+  - Render it
+expected:
+  - Output does not contain "<script>alert"
+  - Output does not contain "</style><"
+  - Output does not contain "http://x"
+automation:
+  node: packages/engine/src/security.test.ts#a stored document renders with the
+    bad values dropped

@@ -21,7 +21,7 @@ export interface PropSpec {
 
 /** Extra documentation for agents/editor (props beyond variant axes). */
 export interface ComponentDoc {
-  category: 'Actions' | 'Inputs' | 'Display' | 'Navigation' | 'Feedback' | 'Data' | 'Charts' | 'Media';
+  category: 'Actions' | 'Inputs' | 'Display' | 'Navigation' | 'Feedback' | 'Data' | 'Charts' | 'Media' | 'Web3';
   description: string;
   props?: Record<string, PropSpec>;
   example: string;
@@ -34,11 +34,21 @@ export type Def = ComponentDef & { doc: ComponentDoc };
 const variantStyles = (axis: string, map: Record<string, Style>): ComponentDef['styles'] => Object.entries(map).map(([v, style]) => ({ when: { [axis]: v }, style }));
 const STATUS = ['neutral', 'info', 'success', 'warning', 'error'] as const;
 
+/** Field looks shared by Input, Select and Textarea. */
+const FIELD_AXIS = ['outlined', 'filled', 'underlined', 'pill', 'ghost', 'floating', 'floating-filled'];
+const fieldLooks = (): ComponentDef['styles'] => [
+  { when: { appearance: 'filled' }, style: { fill: [t('color.bg.subtle')], stroke: undefined } },
+  { when: { appearance: 'underlined' }, style: { fill: [], radius: 0, stroke: { paint: t('color.border.strong'), width: 1, align: 'inside', sides: 'b' } } },
+  { when: { appearance: 'pill' }, style: { radius: t('radius.full') } },
+  { when: { appearance: 'ghost' }, style: { fill: [], stroke: undefined } },
+  { when: { appearance: 'floating-filled' }, style: { fill: [t('color.bg.subtle')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside', sides: 'b' }, radius: 0 } },
+];
+
 export const LIBRARY: Record<string, Def> = {
   // ---------------------------------------------------------------- actions
   Button: {
     id: 'Button', name: 'Button', tag: 'button', role: 'action', labelProp: 'label', anatomy: 'button',
-    axes: { variant: ['primary', 'secondary', 'ghost', 'danger'], size: ['sm', 'md', 'lg'], state: ['default', 'loading', 'disabled'] },
+    axes: { variant: ['primary', 'secondary', 'ghost', 'danger', 'outline', 'soft', 'link', 'success'], size: ['sm', 'md', 'lg'], state: ['default', 'loading', 'disabled'] },
     defaults: { variant: 'primary', size: 'md', state: 'default' },
     styles: [
       { when: {}, layout: { mode: 'row', gap: t('space.2'), align: 'center', justify: 'center', padding: [0, t('space.4'), 0, t('space.4')] }, size: sz(36), style: { radius: t('radius.control'), textStyle: t('textStyle.label') } },
@@ -48,8 +58,12 @@ export const LIBRARY: Record<string, Def> = {
       { when: { variant: 'secondary' }, style: { fill: [t('color.bg.surface')], color: t('color.text.primary'), stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, shadow: t('shadow.control') } },
       { when: { variant: 'ghost' }, style: { fill: [], color: t('color.text.primary') } },
       { when: { variant: 'danger' }, style: { fill: [t('color.action.danger')], color: t('color.text.onDanger'), shadow: t('shadow.control') } },
+      { when: { variant: 'outline' }, style: { fill: [], color: t('color.text.link'), stroke: { paint: t('color.border.focus'), width: 1, align: 'inside' } } },
+      { when: { variant: 'soft' }, style: { fill: [t('color.bg.selected')], color: t('color.text.link') } },
+      { when: { variant: 'link' }, style: { fill: [], color: t('color.text.link') }, layout: { padding: [0, 0, 0, 0] } },
+      { when: { variant: 'success' }, style: { fill: [t('color.status.success.fg')], color: t('color.bg.surface') } },
     ],
-    doc: { category: 'Actions', description: 'Primary, secondary, ghost or destructive action. One primary per view. state=loading shows a spinner.', example: '@Button variant=primary "Run tests"' },
+    doc: { category: 'Actions', description: 'Primary, secondary, ghost, outline, soft, link, success or destructive action. One primary per view. icon= leads, iconright= trails; state=loading shows a spinner.', props: { icon: { type: 'icon', description: 'leading icon' }, iconright: { type: 'icon', description: 'trailing icon' } }, example: '@Button variant=primary "Run tests"' },
   },
   IconButton: {
     id: 'IconButton', name: 'IconButton', tag: 'button', role: 'action', labelProp: 'ariaLabel', anatomy: 'iconbutton',
@@ -79,22 +93,28 @@ export const LIBRARY: Record<string, Def> = {
   // ---------------------------------------------------------------- inputs
   Input: {
     id: 'Input', name: 'Input', tag: 'div', role: 'field', labelProp: 'placeholder', anatomy: 'input',
-    axes: { size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
-    defaults: { size: 'md', state: 'default' },
+    axes: { appearance: FIELD_AXIS, size: ['sm', 'md', 'lg'], state: ['default', 'error', 'success', 'disabled'] },
+    defaults: { appearance: 'outlined', size: 'md', state: 'default' },
     styles: [
       { when: {}, layout: row('space.2', 'space.3'), size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
       { when: { size: 'sm' }, size: sz(32, { kind: 'fill' }), style: {} },
+      { when: { size: 'lg' }, size: sz(44, { kind: 'fill' }), style: {} },
+      ...fieldLooks(),
+      { when: { appearance: 'floating' }, size: { h: { kind: 'fixed', v: 48 }, w: { kind: 'fill' } }, style: {} },
+      { when: { appearance: 'floating-filled' }, size: { h: { kind: 'fixed', v: 56 }, w: { kind: 'fill' } }, style: {} },
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
+      { when: { state: 'success' }, style: { stroke: { paint: t('color.status.success.fg'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
     ],
-    doc: { category: 'Inputs', description: 'Single-line text field. Quoted text = placeholder; value= shows entered text; icon= leading icon.', props: { value: { type: 'string', description: 'entered value' }, icon: { type: 'icon', description: 'leading icon' }, type: { type: 'string', default: 'text', description: 'text | email | password' } }, example: '@Input icon=search "Search runs"' },
+    doc: { category: 'Inputs', description: 'Single-line text field in any look: appearance=outlined, filled, underlined, pill, ghost, floating (label moves up on focus) or floating-filled. Quoted text = placeholder, or the floating label.', props: { value: { type: 'string', description: 'entered value' }, title: { type: 'string', description: 'label above the field' }, help: { type: 'string', description: 'helper or error text below' }, icon: { type: 'icon', description: 'leading icon' }, iconright: { type: 'icon', description: 'trailing icon' }, prefix: { type: 'string', description: 'text before, e.g. https://' }, suffix: { type: 'string', description: 'text after, e.g. .com' }, max: { type: 'number', description: 'character counter limit' }, reveal: { type: 'boolean', description: 'password eye icon' }, required: { type: 'boolean', description: 'adds *' }, type: { type: 'string', default: 'text', description: 'text | email | password | number | url | tel' } }, example: '@Input icon=search "Search runs"' },
   },
   Textarea: {
-    id: 'Textarea', name: 'Textarea', tag: 'textarea', role: 'field', labelProp: 'placeholder',
-    axes: { state: ['default', 'error', 'disabled'] },
-    defaults: { state: 'default' },
+    id: 'Textarea', name: 'Textarea', tag: 'div', role: 'field', labelProp: 'placeholder', anatomy: 'textarea',
+    axes: { appearance: FIELD_AXIS, state: ['default', 'error', 'disabled'] },
+    defaults: { appearance: 'outlined', state: 'default' },
     styles: [
       { when: {}, layout: { mode: 'col', padding: [t('space.2'), t('space.3'), t('space.2'), t('space.3')] }, size: { w: { kind: 'fill' }, h: { kind: 'fixed', v: 96 } }, style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
+      ...fieldLooks(),
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
     ],
@@ -102,11 +122,14 @@ export const LIBRARY: Record<string, Def> = {
   },
   Select: {
     id: 'Select', name: 'Select', tag: 'button', role: 'field', labelProp: 'value', anatomy: 'select',
-    axes: { size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
-    defaults: { size: 'md', state: 'default' },
+    axes: { appearance: FIELD_AXIS, size: ['sm', 'md'], state: ['default', 'error', 'disabled'] },
+    defaults: { appearance: 'outlined', size: 'md', state: 'default' },
     styles: [
       { when: {}, layout: { mode: 'row', align: 'center', justify: 'between', gap: t('space.2'), padding: [0, t('space.2'), 0, t('space.3')] }, size: sz(36, { kind: 'fill' }), style: { fill: [t('color.bg.surface')], stroke: { paint: t('color.border.strong'), width: 1, align: 'inside' }, radius: t('radius.control'), shadow: t('shadow.control'), textStyle: t('textStyle.body'), color: t('color.text.primary') } },
       { when: { size: 'sm' }, size: sz(32, { kind: 'fill' }), style: {} },
+      ...fieldLooks(),
+      { when: { appearance: 'floating' }, size: { h: { kind: 'fixed', v: 48 }, w: { kind: 'fill' } }, style: {} },
+      { when: { appearance: 'floating-filled' }, size: { h: { kind: 'fixed', v: 56 }, w: { kind: 'fill' } }, style: {} },
       { when: { state: 'error' }, style: { stroke: { paint: t('color.action.danger'), width: 1, align: 'inside' } } },
       { when: { state: 'disabled' }, style: { fill: [t('color.bg.subtle')], color: t('color.text.disabled') } },
     ],
@@ -340,6 +363,12 @@ export interface AnatomyCtx {
   esc: (s: string) => string;
   /** svg markup for an icon ref, or '' */
   icon: (ref: string, size?: number) => string;
+  /** colour token name → CSS var (for markup that needs a colour value, e.g. 3D scenes) */
+  color?: (name: string) => string;
+  /** URL of an uploaded asset */
+  assetUrl?: (id: string) => string | undefined;
+  /** an icon's shapes as path data (for 3D extrusion) */
+  iconPaths?: (ref: string) => { paths: { d: string; fill: boolean; w?: number }[]; grid: number; stroke: number } | undefined;
 }
 
 export interface AnatomyResult {
@@ -363,21 +392,38 @@ export const ANATOMY: Record<string, (n: RNode, variant: Record<string, string>,
   button: (n, v, label, c) => {
     const loading = v.state === 'loading';
     return {
-      inner: `${loading ? '<span class="rk-spin" aria-hidden="true"></span>' : ''}${c.esc(label ?? '')}`,
+      inner: `${loading ? '<span class="rk-spin" aria-hidden="true"></span>' : n.props?.icon ? c.icon(String(n.props.icon), 16) : ''}${c.esc(label ?? '')}${n.props?.iconright ? c.icon(String(n.props.iconright), 16) : ''}`,
       attrs: [...(v.state === 'disabled' ? ['disabled'] : []), ...(loading ? ['aria-busy="true"'] : [])],
     };
   },
   iconbutton: (n, _v, label, c) => ({ inner: c.icon(String(n.props?.icon ?? 'more'), 18), attrs: [`aria-label="${c.esc(label ?? 'Action')}"`, `title="${c.esc(label ?? '')}"`] }),
   input: (n, v, label, c) => {
-    const icon = n.props?.icon ? c.icon(String(n.props.icon), 16) : '';
-    const value = n.props?.value !== undefined ? ` value="${c.esc(String(n.props.value))}"` : '';
-    const type = ['email', 'password', 'number', 'url', 'tel'].includes(String(n.props?.type)) ? String(n.props!.type) : 'text';
-    return { inner: `${icon}<input class="rk-field" type="${type}" placeholder="${c.esc(label ?? '')}"${value}${v.state === 'disabled' ? ' disabled' : ''}${v.state === 'error' ? ' aria-invalid="true"' : ''}>` };
+    const p = n.props ?? {};
+    const floating = v.appearance?.startsWith('floating');
+    const icon = p.icon ? c.icon(String(p.icon), 16) : '';
+    const val = p.value !== undefined ? String(p.value) : '';
+    const value = val ? ` value="${c.esc(val)}"` : '';
+    const type = ['email', 'password', 'number', 'url', 'tel'].includes(String(p.type)) ? String(p.type) : 'text';
+    const star = p.required === true ? '<span class="rk-req" aria-hidden="true"> *</span>' : '';
+    const fieldAttrs = `type="${type}" placeholder="${c.esc(floating ? ' ' : label ?? '')}"${value}${v.state === 'disabled' ? ' disabled' : ''}${v.state === 'error' ? ' aria-invalid="true"' : ''}${p.required === true ? ' required' : ''}${p.max ? ` maxlength="${c.esc(String(p.max))}"` : ''}`;
+    const float = floating ? `<label class="rk-float${icon ? ' has-icon' : ''}">${c.esc(label ?? '')}${star}</label>` : '';
+    const top = p.title ? `<label class="rk-top">${c.esc(String(p.title))}${star}</label>` : '';
+    const count = p.max ? `${val.length}/${c.esc(String(p.max))}` : '';
+    const help = p.help || count ? `<span class="rk-help"><span>${c.esc(String(p.help ?? ''))}</span><span>${count}</span></span>` : '';
+    const space = [p.title ? 'margin-top:22px' : '', help ? 'margin-bottom:22px' : ''].filter(Boolean).join(';');
+    return {
+      inner: `${top}${icon}${p.prefix ? `<span class="rk-affix">${c.esc(String(p.prefix))}</span>` : ''}<input class="rk-field" ${fieldAttrs}>${float}${p.suffix ? `<span class="rk-affix">${c.esc(String(p.suffix))}</span>` : ''}${p.reveal === true ? `<span class="rk-eye" aria-label="Show password">${c.icon('ui/eye', 16)}</span>` : ''}${p.iconright ? c.icon(String(p.iconright), 16) : ''}${help}`,
+      attrs: space ? [`style="${space}"`] : [],
+    };
+  },
+  textarea: (n, v, label, c) => {
+    const floating = v.appearance?.startsWith('floating');
+    return { inner: `<textarea class="rk-field" placeholder="${c.esc(floating ? ' ' : label ?? '')}"${v.state === 'disabled' ? ' disabled' : ''}>${c.esc(String(n.props?.value ?? ''))}</textarea>${floating ? `<label class="rk-float">${c.esc(label ?? '')}</label>` : ''}` };
   },
   select: (n, v, label, c) => {
     const empty = !label;
     return {
-      inner: `<span class="rk-value${empty ? ' is-placeholder' : ''}">${c.esc(label ?? String(n.props?.placeholder ?? 'Select…'))}</span>${c.icon('chevron-down', 16)}`,
+      inner: `${n.props?.title ? `<span class="rk-float-static">${c.esc(String(n.props.title))}</span>` : ''}<span class="rk-value${empty ? ' is-placeholder' : ''}">${c.esc(label ?? String(n.props?.placeholder ?? 'Select…'))}</span>${c.icon('chevron-down', 16)}`,
       attrs: ['type="button"', 'aria-haspopup="listbox"', ...(v.state === 'disabled' ? ['disabled'] : [])],
     };
   },
@@ -489,9 +535,9 @@ export const COMPONENT_CSS: Record<string, string> = {
   Button: `.rc-Button{cursor:pointer;border:0;white-space:nowrap}.rc-Button:disabled{cursor:not-allowed;opacity:.5}.rc-Button[aria-busy="true"]{cursor:progress}`,
   IconButton: `.rc-IconButton{cursor:pointer;border:0;padding:0;background:transparent}.rc-IconButton svg{display:block}`,
   Link: `.rc-Link{text-decoration:none;text-underline-offset:3px;cursor:pointer}.rc-Link:hover,.rc-Link:focus-visible{text-decoration:underline}`,
-  Input: `.rc-Input{cursor:text}.rc-Input .rk-field{all:unset;flex:1;min-width:0;font:inherit;color:inherit}.rc-Input .rk-field::placeholder{color:${v('color.text.disabled')}}.rc-Input svg{flex-shrink:0;color:${v('color.text.secondary')}}.rc-Input:focus-within{box-shadow:inset 0 0 0 2px ${v('color.border.focus')}}`,
+  Input: `.rc-Input{cursor:text;position:relative}.rc-Input .rk-affix{color:${v('color.text.secondary')};white-space:nowrap}.rc-Input .rk-eye{display:flex;cursor:pointer}.rc-Input .rk-req{color:${v('color.status.error.fg')}}.rc-Input .rk-top{position:absolute;left:0;bottom:calc(100% + 4px);font:var(--textStyle-label);color:${v('color.text.primary')}}.rc-Input .rk-help{position:absolute;left:0;right:0;top:calc(100% + 4px);display:flex;justify-content:space-between;gap:8px;font:var(--textStyle-caption);color:${v('color.text.secondary')}}.rc-Input[data-state="error"] .rk-help{color:${v('color.status.error.fg')}}.rc-Input .rk-float{position:absolute;left:12px;top:50%;transform:translateY(-50%);transform-origin:left center;pointer-events:none;color:${v('color.text.secondary')};background:transparent;padding:0 4px;margin-left:-4px;transition:top .14s,transform .14s,color .14s,background .14s}.rc-Input .rk-float.has-icon{left:36px}.rc-Input[data-appearance="floating"] .rk-field:focus~.rk-float,.rc-Input[data-appearance="floating"] .rk-field:not(:placeholder-shown)~.rk-float{top:0;left:12px;transform:translateY(-50%) scale(.82);background:${v('color.bg.surface')}}.rc-Input[data-appearance="floating"] .rk-field:focus~.rk-float{color:${v('color.border.focus')}}.rc-Input[data-appearance="floating-filled"] .rk-field{padding-top:16px}.rc-Input[data-appearance="floating-filled"] .rk-field:focus~.rk-float,.rc-Input[data-appearance="floating-filled"] .rk-field:not(:placeholder-shown)~.rk-float{top:12px;transform:translateY(-50%) scale(.8);color:${v('color.border.focus')}}.rc-Input[data-appearance="underlined"]:focus-within,.rc-Input[data-appearance="floating-filled"]:focus-within{box-shadow:none;border-bottom:2px solid ${v('color.border.focus')}}.rc-Input .rk-field{all:unset;flex:1;min-width:0;font:inherit;color:inherit}.rc-Input .rk-field::placeholder{color:${v('color.text.disabled')}}.rc-Input svg{flex-shrink:0;color:${v('color.text.secondary')}}.rc-Input:focus-within{box-shadow:inset 0 0 0 2px ${v('color.border.focus')}}`,
   Textarea: `.rc-Textarea{border:0;resize:vertical;font:inherit;outline:0}.rc-Textarea::placeholder{color:${v('color.text.disabled')}}.rc-Textarea:focus-visible{box-shadow:inset 0 0 0 2px ${v('color.border.focus')}}`,
-  Select: `.rc-Select{border:0;cursor:pointer;text-align:left}.rc-Select .rk-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-Select .is-placeholder{color:${v('color.text.disabled')}}.rc-Select svg{flex-shrink:0;color:${v('color.text.secondary')}}.rc-Select:disabled{cursor:not-allowed}`,
+  Select: `.rc-Select{border:0;cursor:pointer;text-align:left;position:relative}.rc-Select .rk-float-static{position:absolute;left:8px;top:0;transform:translateY(-50%);padding:0 4px;background:${v('color.bg.surface')};font:var(--textStyle-caption);color:${v('color.text.secondary')}}.rc-Select[data-appearance="floating-filled"] .rk-float-static{top:12px;background:none}.rc-Select[data-appearance="floating-filled"] .rk-value{padding-top:14px}.rc-Select .rk-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-Select .is-placeholder{color:${v('color.text.disabled')}}.rc-Select svg{flex-shrink:0;color:${v('color.text.secondary')}}.rc-Select:disabled{cursor:not-allowed}`,
   SearchInput: `.rc-SearchInput .rk-value{flex:1;min-width:0}.rc-SearchInput svg{flex-shrink:0}.rc-SearchInput .rk-kbd{font:500 11px/18px ${v('font.family.mono')};padding:0 6px;border-radius:4px;box-shadow:inset 0 0 0 1px ${v('color.border.default')};color:${v('color.text.secondary')}}`,
   Checkbox: `.rc-Checkbox{cursor:pointer}.rc-Checkbox .rk-box{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:min(${v('radius.1')}, 5px);box-shadow:inset 0 0 0 1.5px ${v('color.border.strong')};background:${v('color.bg.surface')};color:${v('color.text.onPrimary')};flex-shrink:0}.rc-Checkbox .rk-box.is-on{background:${v('color.action.primary')};box-shadow:none}.rc-Checkbox svg{width:12px;height:12px}`,
   Radio: `.rc-Radio{cursor:pointer}.rc-Radio .rk-radio{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1.5px ${v('color.border.strong')};background:${v('color.bg.surface')};flex-shrink:0}.rc-Radio .rk-radio.is-on{box-shadow:inset 0 0 0 5px ${v('color.action.primary')}}`,
@@ -529,3 +575,12 @@ import { DATA_ANATOMY, DATA_CSS, DATA_LIBRARY } from './library-data.js';
 Object.assign(LIBRARY, DATA_LIBRARY);
 Object.assign(ANATOMY, DATA_ANATOMY);
 Object.assign(COMPONENT_CSS, DATA_CSS);
+import { WEB3_ANATOMY, WEB3_CSS, WEB3_LIBRARY } from './library-web3.js';
+Object.assign(LIBRARY, WEB3_LIBRARY);
+Object.assign(ANATOMY, WEB3_ANATOMY);
+Object.assign(COMPONENT_CSS, WEB3_CSS);
+import { BASIC_ANATOMY, BASIC_CSS, BASIC_LIBRARY } from './library-basics.js';
+Object.assign(LIBRARY, BASIC_LIBRARY);
+Object.assign(ANATOMY, BASIC_ANATOMY);
+Object.assign(COMPONENT_CSS, BASIC_CSS);
+COMPONENT_CSS.Textarea = `.rc-Textarea{position:relative}.rc-Textarea .rk-field{all:unset;display:block;width:100%;height:100%;font:inherit;color:inherit;white-space:pre-wrap;resize:none}.rc-Textarea .rk-field::placeholder{color:var(--color-text-disabled)}.rc-Textarea:focus-within{box-shadow:inset 0 0 0 2px var(--color-border-focus)}.rc-Textarea .rk-float{position:absolute;left:12px;top:16px;pointer-events:none;color:var(--color-text-secondary);padding:0 4px;margin-left:-4px;transition:top .14s,transform .14s;transform-origin:left center}.rc-Textarea .rk-field:focus~.rk-float,.rc-Textarea .rk-field:not(:placeholder-shown)~.rk-float{top:-8px;transform:scale(.82);background:var(--color-bg-surface)}`;

@@ -1,0 +1,14 @@
+id: TC-018
+feature: export
+title: Sprite export writes one file named after the set
+priority: P3
+level: integration
+tags:
+  - regression
+covers:
+  - AC-7
+steps:
+  - Call icon_export for set "ui" with format sprite
+expected:
+  - Exactly one file, ui-sprite.svg, is written to outDir
+automation: {}

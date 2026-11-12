@@ -30,6 +30,8 @@ const ago = (t: number) => {
 
 export function ReviewPanel() {
   const role = useEditor((s) => s.role);
+  const manage = useEditor((s) => s.can.includes('members.manage'));
+  const accept = useEditor((s) => s.can.includes('suggestion.accept'));
   const agentMode = useEditor((s) => s.agentMode);
   const reviews = useEditor((s) => s.reviews);
   const selection = useEditor((s) => s.selection);
@@ -41,6 +43,7 @@ export function ReviewPanel() {
   const decided = reviews.changesets.filter((c) => c.status !== 'pending').slice(-5).reverse();
   const sel = selection.length === 1 ? selection[0]! : null;
   const threads = reviews.threads
+    .filter((t) => t.kind !== 'annotation')
     .filter((t) => (filter === 'resolved' ? t.resolved : !t.resolved))
     .filter((t) => filter !== 'layer' || (sel && t.node === sel))
     .slice()
@@ -62,7 +65,7 @@ export function ReviewPanel() {
           <div className="row-control">
             <div className="seg" role="radiogroup" aria-label="Agent edit mode">
               {(['direct', 'suggest'] as const).map((m) => (
-                <button key={m} role="radio" aria-checked={agentMode === m} className="seg-item" disabled={role !== 'owner'} onClick={() => agentMode !== m && void setAgentMode(m)}>
+                <button key={m} role="radio" aria-checked={agentMode === m} className="seg-item" disabled={!manage} onClick={() => agentMode !== m && void setAgentMode(m)}>
                   {m === 'direct' ? 'Apply directly' : 'Ask first'}
                 </button>
               ))}
@@ -85,8 +88,8 @@ export function ReviewPanel() {
             <details className="cs-script"><summary>RDL</summary><pre className="code code-ro code-sm">{c.script}</pre></details>
             <div className="cs-actions">
               <button className="btn" onClick={() => compareChangeset(c.id)}>Compare</button>
-              {canEdit() && <button className="btn" onClick={() => void decide(c.id, 'reject')}>Reject</button>}
-              {canEdit() && <button className="btn btn-primary" onClick={() => void decide(c.id, 'accept')}>Accept</button>}
+              {accept && <button className="btn" onClick={() => void decide(c.id, 'reject')}>Reject</button>}
+              {accept && <button className="btn btn-primary" onClick={() => void decide(c.id, 'accept')}>Accept</button>}
             </div>
           </div>
         ))}

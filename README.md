@@ -31,6 +31,14 @@ Nothing in the library is fixed, and everything below works the same for a human
 | Any style on a layer | gradients, `token~alpha`, layered shadows, per-corner radius, per-side borders, typography, blur, blend, rotate, `abs at:x,y`, and `css:"…"` for the rest; `unset:…` clears |
 | Restyle a component or add a variant | `component @Button` then `variant=pill rfull px6`. Survives library upgrades; `component @Button reset` undoes it |
 | Your own building blocks | `component @PlanCard from #n12`. Text, icon and image layers become props; `detach`, edit and `from` again to update every instance |
+| Your own colours | `token color.custom.sunset #ff5a1f`, or Save in the colour picker; paste whole palettes |
+| Any font | all 1,959 Google Fonts load on use; `fontface "Brand" url=https://…` or upload your own |
+| Any theme | `theme ocean preset=ocean`, or `theme brand bg=#101820 primary=#ffb000`; edit any token per theme |
+| Image backgrounds | `fill:image(asset-or-url,cover,top,neutral.900~40)` |
+| Behaviour | `script:"…"` per layer, with ready snippets; runs on exports and in the sandboxed Run view |
+| 3D and web3 | `@Scene3D` (three.js), wallet and transaction components, swap, mint, staking and governance patterns |
+| Icons | 2,109 built-in icons, online collections, SVG import or image trace. The vector editor has pen, pencil, shape builder, boolean operations, branching paths, live symmetry, gradients and width profiles; export SVG, React, a sprite or an icon font (TTF, WOFF, CSS) |
+| 3D models | `model url=https://….glb`, or upload a .glb in 3D Studio (15 MB limit) |
 | Something that does not exist | draw it: pen paths with `d:"M2 20 Q32 2 60 20"`, or the editor's frame, rectangle, ellipse, line, pen and text tools |
 
 ## Status
@@ -66,6 +74,26 @@ claude mcp add rangoli -- node <abs-path>/packages/server/dist/cli.js mcp <abs-p
 The MCP server also starts the editor (default port 4400). If the editor is already running for that document (`rangoli serve`), the agent attaches to it instead — one process, one history, no overwrites. HTTP MCP clients can connect to `http://127.0.0.1:4400/mcp` directly (this machine only). Open it in a browser: changes appear as the agent works; click elements to select them (the agent reads them with `selection_get`).
 
 Cursor: add the same command under MCP servers in Cursor settings.
+
+## Team app
+
+Organizations, projects, roles and the full UI/UX lifecycle, on Postgres with row-level security.
+
+```bash
+npm run build
+node packages/server/dist/cli.js app --data ./rangoli-data --port 4400
+# open http://127.0.0.1:4400/ and create the first account
+```
+
+The embedded database needs no setup. For AWS (RDS PostgreSQL, S3, ECS Fargate, SES), see [deploy/aws/README.md](deploy/aws/README.md). Details: [docs/SPEC.md](docs/SPEC.md) §18.
+
+`npm run test:postgres` runs the database and app tests against a real PostgreSQL 17 server set up like RDS.
+
+Agents connect per project with a token from the account menu:
+
+```bash
+claude mcp add --transport http rangoli https://host/d/<project-id>/mcp --header "Authorization: Bearer rng_..."
+```
 
 ## RDL in 10 seconds
 

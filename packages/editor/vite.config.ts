@@ -9,10 +9,14 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     // use engine sources directly: one codebase, tree-shaken into the editor bundle
-    alias: { '@rangoli/engine': fileURLToPath(new URL('../engine/src/index.ts', import.meta.url)) },
+    alias: [
+      { find: '@rangoli/engine', replacement: fileURLToPath(new URL('../engine/src/index.ts', import.meta.url)) },
+      // paper's default build compiles PaperScript with new Function as it loads, which the hosted CSP refuses
+      { find: /^paper$/, replacement: 'paper/dist/paper-core.js' },
+    ],
   },
   server: {
-    proxy: { '/api': server, '/events': server, '/select': server },
+    proxy: { '/api': server, '/events': server, '/select': server, '/d': server },
   },
   build: {
     outDir: 'dist',

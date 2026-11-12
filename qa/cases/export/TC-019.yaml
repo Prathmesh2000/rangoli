@@ -1,0 +1,17 @@
+id: TC-019
+feature: export
+title: Frame composition exports through the server
+priority: P2
+level: integration
+tags:
+  - regression
+covers:
+  - AC-8
+steps:
+  - Compose an image from a frame
+  - Export it
+expected:
+  - Export returns the image with its size and format
+automation:
+  node: "packages/server/src/e2e.test.ts#images: upload, edit to webp, use with
+    alt lint, compose + export, served safely"

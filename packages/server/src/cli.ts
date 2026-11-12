@@ -8,6 +8,8 @@ import { applyRdl, formatLint, lint, renderDocument, serializeRdl } from '@rango
 import { startPreview } from './http.js';
 import { createMcpServer } from './mcp.js';
 import { Session } from './session.js';
+import { createLogger, logger } from './telemetry/log.js';
+import { startRuntimeMetrics } from './telemetry/metrics.js';
 
 const HELP = `rangoli — agent-first design tool
 
@@ -18,6 +20,17 @@ Usage:
       --share   listen on the local network and print invite links (editor / reviewer / viewer)
   rangoli apply <dir.rangoli> <script.rdl>                          apply an RDL script
   rangoli show <dir.rangoli> [--outline]                            print the document as RDL
+  rangoli app [--data ./rangoli-data] [--port 4400] [--host 127.0.0.1] [--invite-only]
+                                                                    the team app: orgs, projects, roles, lifecycle
+      DATABASE_URL       Postgres owner connection, migrates on start (default: embedded database in --data)
+      APP_DATABASE_URL   Postgres connection logging in as rangoli_login. Alone, it never migrates (run rangoli migrate)
+      RANGOLI_PUBLIC_URL https://… when behind a proxy (Secure cookies, absolute invite links)
+      DB_HOST, DB_PORT, DB_NAME, DB_APP_PASSWORD, DB_SSL_CA   hosted login as separate values (ECS); never migrates
+      S3_BUCKET          store images in S3 instead of Postgres
+      SES_FROM           send invites, reviews and password resets through SES
+      LOG_LEVEL          debug, info, warn or error (default: info in production, otherwise warn)
+  rangoli migrate                                                   apply pending migrations as the schema owner, then exit
+      DATABASE_URL, or DB_HOST + DB_OWNER_USER + DB_OWNER_PASSWORD (DB_APP_PASSWORD also sets rangoli_login's password)
   rangoli lint <dir.rangoli>                                        lint (exit 1 on P0/P1)
   rangoli render <dir.rangoli> -o out.html [--mode dark]            standalone HTML
 
@@ -73,6 +86,39 @@ async function main() {
   const log = (...m: unknown[]) => console.error(...m); // stdout is reserved for MCP
   if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     console.log(HELP);
+    return;
+  }
+  if (cmd === 'migrate') {
+    const { migrationTarget, runMigrationTask } = await import('./app/db.js');
+    const target = migrationTarget(process.env);
+    if (!target) throw new Error('Set DATABASE_URL, or DB_HOST, DB_OWNER_USER and DB_OWNER_PASSWORD. The embedded database migrates itself when the app starts.');
+    const applied = await runMigrationTask(target);
+    createLogger({ level: 'info' }).info('migrations complete', { applied });
+    return;
+  }
+  if (cmd === 'app') {
+    const args = process.argv.slice(3);
+    const { appDatabaseOptions, openDatabase } = await import('./app/db.js');
+    const { startApp } = await import('./app/server.js');
+    const { s3Blobs, sesMailer } = await import('./app/infra.js');
+    const env = process.env;
+    if (env.DB_HOST && env.DB_OWNER_PASSWORD) logger.warn('DB_OWNER_PASSWORD is set but the app does not use it; remove it from this environment');
+    const db = await openDatabase(appDatabaseOptions(env, resolve(flag(args, '--data') ?? 'rangoli-data')));
+    await db.singleton();
+    const blobs = env.S3_BUCKET ? await s3Blobs({ bucket: env.S3_BUCKET, endpoint: env.S3_ENDPOINT }) : undefined;
+    const mail = env.SES_FROM ? await sesMailer(env.SES_FROM) : undefined;
+    const app = await startApp({ db, blobs, mail, port: Number(env.PORT ?? flag(args, '--port') ?? 4400), host: flag(args, '--host') ?? env.HOST ?? '127.0.0.1', publicUrl: env.RANGOLI_PUBLIC_URL, inviteOnly: args.includes('--invite-only') || env.RANGOLI_INVITE_ONLY === '1' });
+    const stopMetrics = startRuntimeMetrics();
+    if (env.NODE_ENV === 'production') logger.info('app started', { url: env.RANGOLI_PUBLIC_URL ?? app.url, driver: db.driver, images: blobs ? 's3' : 'database', mail: mail ? 'ses' : 'log' });
+    else log(`Rangoli: ${env.RANGOLI_PUBLIC_URL ?? app.url}  (${db.driver}, images in ${blobs ? 's3' : 'database'}, mail ${mail ? 'ses' : 'to log'}, Ctrl+C to stop)`);
+    const stop = async () => {
+      stopMetrics();
+      await app.close();
+      await db.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
     return;
   }
   if (!target) throw new Error(`Missing <dir.rangoli>\n\n${HELP}`);
@@ -158,7 +204,7 @@ async function main() {
     case 'render': {
       const out = flag(rest, '-o') ?? 'out.html';
       const session = await Session.open(target);
-      await writeFile(resolve(out), renderDocument(session.doc, { mode: flag(rest, '--mode') }));
+      await writeFile(resolve(out), renderDocument(session.doc, { mode: flag(rest, '--mode'), scripts: true }));
       log(`Wrote ${resolve(out)}`);
       return;
     }
@@ -168,6 +214,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
+  if (['app', 'migrate'].includes(process.argv[2] ?? '')) logger.error('startup failed', { err: e });
+  else console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 });

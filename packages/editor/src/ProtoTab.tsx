@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { serializePrototype, type RNode } from '@rangoli/engine';
 import { indent } from './helpers';
-import { canEdit, getState, rdl, useEditor } from './store';
+import { canEdit, getState, rdl, useEditor, api } from './store';
 
 const TRANSITIONS = ['dissolve', 'smart', 'slide left', 'slide right', 'push left', 'push right', 'slide up', 'instant'];
 
@@ -25,6 +25,16 @@ export function ProtoTab({ node }: { node: RNode }) {
   const [target, setTarget] = useState(screens.find((s) => s.id !== node.id)?.id ?? '');
   const [transition, setTransition] = useState('dissolve');
   const needsTarget = action === 'navigate' || action === 'overlay';
+  const needsLayer = action === 'show' || action === 'hide' || action === 'togglelayer';
+  const layers = Object.values(page.nodes).filter((n) => n.parent && n.type === 'frame');
+  const [layer, setLayer] = useState(layers[0]?.id ?? '');
+  const [variable, setVariable] = useState('');
+  const [value, setValue] = useState('');
+  const [only, setOnly] = useState('');
+  const declared = Object.entries(doc.data.prototype?.variables ?? {}).map(([k, v]) => `${k}=${/\s/.test(v) ? JSON.stringify(v) : v}`).join(' ');
+  const [vars, setVars] = useState(declared);
+  useEffect(() => setVars(declared), [declared]);
+  const isLogic = action === 'set' || action === 'toggle' || needsLayer;
   const comp = node.component ? doc.data.components[node.component] : undefined;
   const swapOptions = comp ? Object.entries(comp.axes).flatMap(([k, vs]) => vs.map((v) => `${k}=${v}`)) : [];
   const [swapTo, setSwapTo] = useState(swapOptions[0] ?? '');
@@ -32,11 +42,15 @@ export function ProtoTab({ node }: { node: RNode }) {
   const [tl, setTl] = useState(timelines[0] ?? '');
 
   const lineFor = () => {
-    const parts = [trigger === 'delay' ? 'delay:1500' : trigger, action];
+    const parts = [trigger === 'delay' ? 'delay:1500' : trigger, action === 'togglelayer' ? 'toggle' : action];
     if (needsTarget) parts.push(`#${target}`);
+    if (needsLayer) parts.push(`#${layer}`);
+    if (action === 'set') parts.push(`${variable.trim()}=${/\s/.test(value) ? JSON.stringify(value) : value}`);
+    if (action === 'toggle') parts.push(variable.trim());
     if (action === 'swap') parts.push(swapTo);
     if (action === 'play') parts.push(`timeline:${tl}`);
-    if (action !== 'play' && action !== 'swap') parts.push(transition);
+    if (action !== 'play' && action !== 'swap' && !isLogic) parts.push(transition);
+    if (only.trim()) parts.push('if', only.trim());
     return parts.join(' ');
   };
   const save = (lines: string) => {
@@ -53,7 +67,7 @@ export function ProtoTab({ node }: { node: RNode }) {
           <div className="code-actions">
             <span className="hint" style={{ flex: 1 }}>{isStart ? 'Prototype starts here.' : incoming ? `${incoming} interaction${incoming > 1 ? 's' : ''} lead here.` : 'Not linked yet.'}</span>
             {editable && !isStart && <button className="btn" onClick={() => void rdl(`proto start #${node.id}`, 'set start screen')}>Set as start</button>}
-            <button className="btn btn-primary" onClick={() => window.open(`/play?start=${node.id}`, '_blank', 'noopener')}>▶ Play from here</button>
+            <button className="btn btn-primary" onClick={() => window.open(api(`/play?start=${node.id}`), '_blank', 'noopener')}>▶ Play from here</button>
           </div>
         </section>
       )}
@@ -75,6 +89,11 @@ export function ProtoTab({ node }: { node: RNode }) {
               <option value="back">Back</option>
               {comp && <option value="swap">Change variant</option>}
               {timelines.length > 0 && <option value="play">Play timeline</option>}
+              <option value="set">Set variable</option>
+              <option value="toggle">Toggle variable</option>
+              <option value="show">Show layer</option>
+              <option value="hide">Hide layer</option>
+              <option value="togglelayer">Show or hide layer</option>
             </select>
             {needsTarget && (
               <select className="input select" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Target screen">
@@ -91,12 +110,31 @@ export function ProtoTab({ node }: { node: RNode }) {
                 {timelines.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
-            {action !== 'play' && action !== 'swap' && (
+            {needsLayer && (
+              <select className="input select" value={layer} onChange={(e) => setLayer(e.target.value)} aria-label="Layer">
+                {layers.map((n) => <option key={n.id} value={n.id}>{n.name} #{n.id}</option>)}
+              </select>
+            )}
+            {(action === 'set' || action === 'toggle') && <input className="input" aria-label="Variable name" placeholder="Variable" value={variable} onChange={(e) => setVariable(e.target.value)} />}
+            {action === 'set' && <input className="input" aria-label="New value" placeholder="Value, or +1" value={value} onChange={(e) => setValue(e.target.value)} />}
+            <input className="input" aria-label="Only if" placeholder="Only if, e.g. plan=pro" value={only} onChange={(e) => setOnly(e.target.value)} />
+            {action !== 'play' && action !== 'swap' && !isLogic && (
               <select className="input select" value={transition} onChange={(e) => setTransition(e.target.value)} aria-label="Transition">
                 {TRANSITIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
-            <button className="btn btn-primary" disabled={needsTarget && !target} onClick={() => void save([source, lineFor()].filter(Boolean).join('\n'))}>Add</button>
+            <button className="btn btn-primary" disabled={(needsTarget && !target) || (needsLayer && !layer) || ((action === 'set' || action === 'toggle') && !variable.trim())} onClick={() => void save([source, lineFor()].filter(Boolean).join('\n')).then(() => setOnly(''))}>Add</button>
+          </div>
+        </section>
+      )}
+
+      {editable && (
+        <section className="section">
+          <h3 className="section-title">Variables</h3>
+          <input className="input" aria-label="Starting values" placeholder="plan=free seats=1" value={vars} onChange={(e) => setVars(e.target.value)} />
+          <div className="code-actions">
+            <span className="hint" style={{ flex: 1 }}>Show a value in any text with {'{{plan}}'}</span>
+            <button className="btn btn-primary" disabled={vars.trim() === declared} onClick={() => void rdl(vars.trim() ? `proto var none\nproto var ${vars.trim()}` : 'proto var none', 'prototype variables')}>Apply</button>
           </div>
         </section>
       )}

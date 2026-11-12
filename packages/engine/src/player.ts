@@ -4,6 +4,7 @@
  * name path. Reduced motion → short dissolves, timelines fade only.
  */
 import { cloneDocument } from './review.js';
+import type { AssetMeta } from './images.js';
 import type { RangoliDocument } from './document.js';
 import { resolveTiming, specKeyframes } from './motion.js';
 import type { Interaction } from './prototype.js';
@@ -18,6 +19,8 @@ export interface PlayerOptions {
   title?: string;
   /** where asset files are served from (default "assets/" next to the exported HTML) */
   assetBase?: string;
+  /** embed assets directly, for pages that cannot fetch them */
+  assetUrl?: (meta: AssetMeta) => string;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -46,7 +49,7 @@ export function prototypeHtml(doc: RangoliDocument, opts: PlayerOptions = {}): s
   let css = '';
   const used = new Set<string>();
   const sections = screens.map((id) => {
-    const f = renderFragment(doc, { roots: [id], editorAttrs: true, assetBase: opts.assetBase });
+    const f = renderFragment(doc, { roots: [id], editorAttrs: true, assetBase: opts.assetBase, assetUrl: opts.assetUrl });
     css += f.css + '\n';
     f.usedComponents.forEach((c) => used.add(c));
     const n = page.nodes[id]!;
@@ -106,7 +109,7 @@ export function prototypeHtml(doc: RangoliDocument, opts: PlayerOptions = {}): s
     });
   }
 
-  const data = { start, screens: Object.fromEntries(screens.map((id) => [id, page.nodes[id]!.name])), interactions, swaps, keys, timelines };
+  const data = { vars: doc.data.prototype?.variables ?? {}, start, screens: Object.fromEntries(screens.map((id) => [id, page.nodes[id]!.name])), interactions, swaps, keys, timelines };
   const allCss = renderCss(doc, css, [...used]);
   const mode = opts.mode && opts.mode !== 'light' ? ` data-mode="${esc(opts.mode)}"` : '';
 
@@ -127,6 +130,7 @@ ${PLAYER_CSS}
 <div class="rp-hud" role="toolbar" aria-label="Prototype controls">
   <button type="button" data-rp="back" title="Back (Backspace)">← Back</button>
   <span class="rp-name" aria-live="polite"></span>
+  <span class="rp-vars" title="Prototype variables"></span>
   <button type="button" data-rp="restart" title="Restart (R)">↺ Restart</button>
   <button type="button" data-rp="hotspots" aria-pressed="false" title="Show clickable areas (H)">Hotspots</button>
 </div>
@@ -153,6 +157,7 @@ body{margin:0;overflow:hidden}
 .rp-hud button:focus-visible{outline:2px solid #5b9be0}
 .rp-hud button[aria-pressed="true"]{background:rgba(255,255,255,.18)}
 .rp-name{flex:1;text-align:center;opacity:.8}
+.rp-vars{opacity:.7;font-size:12px;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-hot{cursor:pointer}
 body.rp-show-hot .rp-hot,.rp-flash .rp-hot{outline:2px solid rgba(47,129,247,.85)!important;outline-offset:2px;background-color:rgba(47,129,247,.08)}
 `;
@@ -254,8 +259,50 @@ function playTimeline(name) {
   }
 }
 const original = new Map();
+let V = Object.assign({}, D.vars), hiddenByLogic = [];
+const texts = new Map();
+function paint() {
+  const walker = document.createTreeWalker(viewport, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (!texts.has(n) && /{{[\\w-]+}}/.test(n.nodeValue)) texts.set(n, n.nodeValue);
+  texts.forEach((tpl, n) => { n.nodeValue = tpl.replace(/{{([\\w-]+)}}/g, (_, k) => (k in V ? V[k] : '')); });
+  const shown = Object.entries(V).map(([k, v]) => k + '=' + v).join('  ');
+  document.querySelector('.rp-vars').textContent = shown;
+}
+function holds(c) {
+  const set = c.name in V, a = V[c.name], na = Number(a), nb = Number(c.value), numeric = set && a !== '' && !isNaN(na) && !isNaN(nb);
+  const text = set ? String(a) : c.value === 'false' ? 'false' : '';
+  switch (c.op) {
+    case '=': return text === c.value;
+    case '!=': return text !== c.value;
+    case '>': return numeric && na > nb;
+    case '<': return numeric && na < nb;
+    case '>=': return numeric && na >= nb;
+    case '<=': return numeric && na <= nb;
+  }
+  return false;
+}
+function setVisible(id, visible) {
+  viewport.querySelectorAll('[data-rid="' + id + '"]').forEach((el) => {
+    el.style.display = visible ? '' : 'none';
+    if (!visible && !hiddenByLogic.includes(el)) hiddenByLogic.push(el);
+  });
+}
+function isVisible(id) {
+  const el = viewport.querySelector('[data-rid="' + id + '"]');
+  return !!el && el.style.display !== 'none';
+}
 function run(it, id, el) {
+  if (it.when && !it.when.every(holds)) return;
   switch (it.action) {
+    case 'set':
+      for (const [k, v] of Object.entries(it.variant || {})) V[k] = /^[+-]\\d+(\\.\\d+)?$/.test(v) ? String((Number(V[k]) || 0) + Number(v)) : v;
+      return paint();
+    case 'toggle':
+      if (it.target) return setVisible(it.target, !isVisible(it.target));
+      V[it.variable] = V[it.variable] === 'true' ? 'false' : 'true';
+      return paint();
+    case 'show': return setVisible(it.target, true);
+    case 'hide': return setVisible(it.target, false);
     case 'navigate': return show(it.target, it, true);
     case 'overlay': return openOverlay(it.target, it);
     case 'close': return closeOverlay();
@@ -311,8 +358,9 @@ document.addEventListener('pointerover', (e) => {
   }, { once: true });
 });
 function toggleHot() { const on = document.body.classList.toggle('rp-show-hot'); document.querySelector('[data-rp="hotspots"]').setAttribute('aria-pressed', String(on)); }
-function restart() { history = []; closeAllOverlays(true); const s = current; current = null; if (s) screenEl(s).classList.remove('is-active'); show(D.start, null, false); }
+function restart() { V = Object.assign({}, D.vars); hiddenByLogic.forEach((el) => { el.style.display = ''; }); hiddenByLogic = []; paint(); history = []; closeAllOverlays(true); const s = current; current = null; if (s) screenEl(s).classList.remove('is-active'); show(D.start, null, false); }
 document.querySelector('.rp-hud').addEventListener('click', (e) => { const a = e.target.dataset && e.target.dataset.rp; if (a === 'back') back(); if (a === 'restart') restart(); if (a === 'hotspots') toggleHot(); });
+paint();
 show(D.start, null, false);
-window.__rangoliPlayer = { show: (id) => show(id, null, true), current: () => current, overlays: () => overlays.map((o) => o.id), playTimeline };
+window.__rangoliPlayer = { vars: () => Object.assign({}, V), show: (id) => show(id, null, true), current: () => current, overlays: () => overlays.map((o) => o.id), playTimeline };
 })();`;

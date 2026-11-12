@@ -41,7 +41,7 @@ describe('one process per document: agents attach to a running editor server', (
     const r = spawnSync(process.execPath, [CLI, 'serve', doc, '--port', '4971'], { encoding: 'utf8', timeout: 15000 });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('already open in another Rangoli process');
-  });
+  }, 20000);
 
   it('rangoli mcp bridges to the running server: same document, same history, agent in presence', async () => {
     const client = new Client({ name: 'bridge-test', version: '1.0.0' });

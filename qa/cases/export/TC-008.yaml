@@ -1,0 +1,16 @@
+id: TC-008
+feature: export
+title: tokens-json export writes parseable JSON matching the tokens
+priority: P2
+level: integration
+tags:
+  - regression
+covers:
+  - AC-4
+steps:
+  - Call the export tool with format tokens-json and an output file
+  - Parse the file as JSON
+expected:
+  - The file parses without error
+  - The parsed value equals the document tokens
+automation: {}

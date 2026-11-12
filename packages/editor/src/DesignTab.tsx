@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { LIBRARY, componentRdl, resolveInstance, type Dim, type Len, type Padding, type RNode } from '@rangoli/engine';
 import { lenValue, nodeFlags, paintValue, rdlVal, resolvePaintHex, tokenOptions, type Opt } from './helpers';
 import { Area, ColorField, Combo, Row, Section, Segmented, Select, TextInput, Toggle, setFlags as set } from './controls';
-import { getState, rdl, select, useEditor } from './store';
+import { api, getState, rdl, select, toast, useEditor } from './store';
+import { FontField } from './FontPicker';
+import { IconField } from './IconPicker';
+import { DEVICES, SceneSection } from './Scene3DPanel';
 
 type Opts = ReturnType<typeof tokenOptions>;
 
@@ -10,8 +13,7 @@ type Opts = ReturnType<typeof tokenOptions>;
 const lenFlag = (v: string, steps: Opt[]) => (steps.some((s) => s.value === v) ? v : /^\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
 const opt = (...vals: string[]): Opt[] => vals.map((v) => ({ value: v, label: v }));
 
-const FONTS = opt('sans', 'display', 'mono', 'Inter', 'IBM Plex Sans', 'Roboto', 'Georgia', 'Source Serif 4', 'JetBrains Mono');
-const SIZES = opt('11', '12', '13', '14', '16', '18', '20', '24', '30', '36', '48', '60', '72');
+const SIZES = opt('10', '11', '12', '13', '14', '15', '16', '18', '20', '22', '24', '28', '32', '36', '40', '48', '56', '64', '72', '80', '96', '120', '160');
 const WEIGHTS = ['300', '400', '500', '600', '700', '800', '900'].map((v) => ({ value: v, label: v }));
 const LEADING = opt('1', '1.15', '1.25', '1.4', '1.5', '1.75', '2');
 const TRACKING = opt('-0.04em', '-0.02em', '-0.01em', '0', '0.02em', '0.04em', '0.08em', '0.12em');
@@ -21,9 +23,9 @@ const CURSORS = ['auto', 'pointer', 'default', 'text', 'move', 'grab', 'not-allo
 
 export function DesignTab({ node }: { node: RNode }) {
   const mode = useEditor((s) => s.mode);
-  useEditor((s) => s.version);
+  const version = useEditor((s) => s.version);
   const doc = getState().doc!;
-  const opts = useMemo(() => tokenOptions(doc, mode), [doc, mode]);
+  const opts = useMemo(() => tokenOptions(doc, mode), [doc, mode, version]);
   const comp = node.component ? doc.data.components[node.component] : undefined;
   const eff = comp ? resolveInstance(node, comp) : { layout: node.layout, size: node.size, style: node.style ?? {}, variant: {} as Record<string, string> };
   const st = eff.style;
@@ -38,15 +40,17 @@ export function DesignTab({ node }: { node: RNode }) {
 
   return (
     <div className="props">
+      {comp?.id === 'Scene3D' && <SceneSection key={`3${k}`} node={node} opts={opts} />}
       {comp && <ComponentSection key={`c${k}`} node={node} variant={eff.variant} />}
       {(isContainer || (node.type === 'vector')) && <CreateComponent key={`m${k}`} node={node} />}
 
+      {node.type === 'vector' && node.icon && <Section key={`ic${k}`} title="Icon"><Row label="Icon"><IconField value={node.icon} onPick={(v) => set(id, `icon:${v}`, 'icon')} /></Row></Section>}
       {hasText && <TypeSection key={`t${k}`} node={node} f={f} opts={opts} st={st} mode={mode} />}
 
       {isContainer && <LayoutSection key={`l${k}`} id={id} layout={eff.layout} opts={opts} />}
 
       <PositionSection key={`p${k}`} node={node} f={f} parentFree={parentMode === 'none'} />
-      <SizeSection key={`s${k}`} id={id} size={eff.size} ratio={f.kv.ratio ?? ''} />
+      <SizeSection key={`s${k}`} id={id} size={eff.size} ratio={f.kv.ratio ?? ''} root={!node.parent && node.type === 'frame'} />
 
       {!isText && <FillSection key={`f${k}`} id={id} value={f.kv.fill ?? ''} placeholder={paintValue(st.fill?.[0], opts.resolver)} swatch={resolvePaintHex(st.fill?.[0], opts.resolver, mode)} opts={opts} />}
       {!isText && <StrokeSection key={`b${k}`} id={id} value={f.kv.stroke ?? ''} inherited={paintValue(st.stroke?.paint, opts.resolver)} swatch={resolvePaintHex(st.stroke?.paint, opts.resolver, mode)} opts={opts} />}
@@ -95,13 +99,12 @@ function ComponentSection({ node, variant }: { node: RNode; variant: Record<stri
         : !doc2?.noLabel && <Row label={comp.labelProp ?? 'label'}>
           <TextInput value={String(node.props?.[comp.labelProp ?? 'label'] ?? '')} onCommit={(v) => set(id, JSON.stringify(v), 'edit label')} />
         </Row>}
-      {Object.entries(doc2?.props ?? {}).map(([key, spec]) => (
+      {Object.entries(doc2?.props ?? {}).filter(([key]) => comp.id !== 'Scene3D').map(([key, spec]) => (
         <Row key={key} label={key}>
           {spec.type === 'boolean' ? (
             <Segmented value={String(node.props?.[key] ?? spec.default ?? false)} options={['true', 'false']} onChange={(v) => set(id, `${key}=${v}`)} />
           ) : spec.type === 'icon' ? (
-            <Select value={String(node.props?.[key] ?? spec.default ?? '')} placeholder="none" onChange={(v) => set(id, `${key}=${v}`)}
-              options={Object.values(doc.data.icons ?? {}).flatMap((s) => Object.keys(s.icons).map((n) => ({ value: n, label: n })))} />
+            <IconField value={String(node.props?.[key] ?? spec.default ?? '')} onPick={(v) => set(id, `${key}=${v}`)} />
           ) : (
             <TextInput value={String(node.props?.[key] ?? '')} onCommit={(v) => set(id, v === '' ? `${key}=""` : `${key}=${spec.type === 'number' && /^-?\d+(\.\d+)?$/.test(v) ? v : JSON.stringify(v)}`)} />
           )}
@@ -166,7 +169,7 @@ function TypeSection({ node, f, opts, st, mode }: { node: RNode; f: ReturnType<t
         <Select value={st.textStyle?.token.replace('textStyle.', '') ?? ''} options={opts.textStyles} placeholder="inherit" onChange={(v) => set(id, v)} />
       </Row>
       <Row label="Font">
-        <Combo value={f.kv.font ?? ''} options={FONTS} placeholder="from style" label="Font family" onCommit={(v) => set(id, v ? `font:${rdlVal(v)}` : 'unset:family')} />
+        <FontField value={f.kv.font ?? ''} placeholder="From text style" onPick={(v) => set(id, v ? `font:${rdlVal(v)}` : 'unset:family', 'font')} />
       </Row>
       <Row label="Size">
         <div className="pair">
@@ -194,7 +197,7 @@ function TypeSection({ node, f, opts, st, mode }: { node: RNode; f: ReturnType<t
         <Segmented value={textCase} options={['none', 'upper', 'lower', 'capitalize']} labels={{ none: 'Aa', upper: 'AA', lower: 'aa', capitalize: 'Ab' }} onChange={(v) => set(id, v === 'none' ? 'unset:case' : v)} />
       </Row>
       <Row label="Colour">
-        <ColorField value={f.kv.color ?? ''} options={opts.colors} label="Text colour" placeholder={paintValue(st.color, opts.resolver) || 'inherit'} swatch={resolvePaintHex(st.color, opts.resolver, mode)}
+        <ColorField live="color" value={f.kv.color ?? ''} options={opts.colors} label="Text colour" placeholder={paintValue(st.color, opts.resolver) || 'inherit'} swatch={resolvePaintHex(st.color, opts.resolver, mode)}
           onCommit={(v) => set(id, v ? `color:${v}` : 'unset:color')} />
       </Row>
     </Section>
@@ -215,10 +218,10 @@ function LayoutSection({ id, layout, opts }: { id: string; layout: RNode['layout
       {m === 'grid' && <Row label="Columns"><TextInput value={String(layout?.columns ?? '')} label="Columns" onCommit={(v) => /^\d+$/.test(v) && set(id, `cols${v}`)} /></Row>}
       {m !== 'none' && (
         <>
-          <Row label="Gap">
+          <Row label={`Gap${pxOf(opts.space, lenValue(layout?.gap, 'space'))}`}>
             <Combo value={lenValue(layout?.gap, 'space')} options={opts.space} placeholder="0" label="Gap" onCommit={(v) => set(id, v ? `gap${lenFlag(v, opts.space)}` : 'unset:gap')} />
           </Row>
-          <Row label="Padding">
+          <Row label={`Padding${pxOf(opts.space, uniformPad(pad))}`}>
             <Combo value={uniformPad(pad)} options={opts.space} placeholder={pad ? 'mixed' : '0'} label="Padding, all sides" onCommit={(v) => set(id, v ? `p${lenFlag(v, opts.space)}` : 'unset:padding')} />
           </Row>
           <Row label="Sides">
@@ -240,6 +243,9 @@ function LayoutSection({ id, layout, opts }: { id: string; layout: RNode['layout
     </Section>
   );
 }
+
+/** A scale step's real size, shown beside the field label. */
+const pxOf = (steps: Opt[], v: string) => { const m = / · (\d+px)/.exec(steps.find((s) => s.value === v)?.label ?? ''); return m ? ` ${m[1]}` : ''; };
 
 function uniformPad(p: Padding | undefined): string {
   if (!p) return '';
@@ -276,12 +282,13 @@ function PositionSection({ node, f, parentFree }: { node: RNode; f: ReturnType<t
   );
 }
 
-function SizeSection({ id, size, ratio }: { id: string; size: RNode['size']; ratio: string }) {
+function SizeSection({ id, size, ratio, root }: { id: string; size: RNode['size']; ratio: string; root: boolean }) {
   const lim = (key: 'minW' | 'maxW' | 'minH' | 'maxH', flag: string, label: string) => (
     <TextInput value={typeof size?.[key] === 'number' ? String(size[key]) : ''} placeholder={label} label={label} onCommit={(v) => set(id, v ? `${flag}${v}` : `unset:${flag}`)} />
   );
   return (
     <Section title="Size">
+      {root && <Row label="Device"><Select value="" placeholder="Choose a screen size" options={DEVICES.map((d) => ({ value: `w${d.w} h${d.h}`, label: `${d.name} · ${d.w}×${d.h}` }))} onChange={(v) => set(id, v, 'device size')} /></Row>}
       <DimRow axis="w" dim={size?.w} id={id} />
       <DimRow axis="h" dim={size?.h} id={id} />
       <Row label="Min / max W"><div className="pair">{lim('minW', 'minw', 'min')}{lim('maxW', 'maxw', 'max')}</div></Row>
@@ -318,9 +325,54 @@ function parseGrad(v: string): Grad | null {
 }
 const gradStr = (g: Grad) => `${g.type}(${[...(g.type === 'linear' ? [g.angle] : []), ...g.stops.map((s) => (s.at ? `${s.c}@${s.at}` : s.c))].join(',')})`;
 
+interface Img { src: string; fit: string; pos: string; tint: string }
+function parseImage(v: string): Img | null {
+  const m = /^image\((.*)\)$/.exec(v);
+  if (!m) return null;
+  const [src = '', fit = 'cover', pos = 'center', tint = ''] = m[1]!.split(',').map((s) => s.trim());
+  return { src, fit, pos, tint };
+}
+const imageStr = (i: Img) => `image(${i.src},${i.fit}${i.pos !== 'center' || i.tint ? `,${i.pos}` : ''}${i.tint ? `,${i.tint}` : ''})`;
+const POSITIONS = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+
+function ImageFill({ id, image, opts, onDone }: { id: string; image: Img | null; opts: Opts; onDone: () => void }) {
+  useEditor((s) => s.version);
+  const assets = Object.values(getState().doc!.data.assets ?? {}).filter((a) => a.mime.startsWith('image/'));
+  const cur: Img = image ?? { src: '', fit: 'cover', pos: 'center', tint: '' };
+  const write = async (n: Img) => { if (n.src && (await set(id, `fill:${imageStr(n)}`, 'background image'))) onDone(); };
+  const file = useRef<HTMLInputElement>(null);
+  const upload = async (f?: File) => {
+    if (!f) return;
+    const dataUrl = await new Promise<string>((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.readAsDataURL(f); });
+    const res = await fetch(api('/api/assets'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: f.name, dataUrl }) });
+    const meta = (await res.json()) as { id?: string; error?: string };
+    if (!res.ok || !meta.id) return toast('error', meta.error ?? 'Upload failed');
+    window.setTimeout(() => void write({ ...cur, src: meta.id! }), 300);
+  };
+  return (
+    <>
+      <div className="img-grid">
+        <button className="img-add" onClick={() => file.current?.click()}>Upload</button>
+        <input ref={file} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif" aria-label="Upload a background image" onChange={(e) => void upload(e.target.files?.[0])} />
+        {assets.map((a) => <button key={a.id} className="img-tile" aria-pressed={cur.src === a.id} title={a.name} style={{ backgroundImage: `url("${api(`/assets/${a.file}`)}")` }} aria-label={`Use ${a.name}`} onClick={() => void write({ ...cur, src: a.id })} />)}
+      </div>
+      <Row label="URL"><TextInput value={cur.src.startsWith('https://') ? cur.src : ''} placeholder="https://…" label="Image URL" onCommit={(v) => v && write({ ...cur, src: v })} /></Row>
+      {image && (
+        <>
+          <Row label="Fit"><Segmented value={cur.fit} options={['cover', 'contain', 'tile']} labels={{ cover: 'Cover', contain: 'Contain', tile: 'Tile' }} onChange={(v) => write({ ...cur, fit: v })} /></Row>
+          <Row label="Focus"><Select value={cur.pos} options={opt(...POSITIONS)} onChange={(v) => write({ ...cur, pos: v })} /></Row>
+          <Row label="Tint"><ColorField value={cur.tint} options={opts.colors} label="Image tint" placeholder="none" onCommit={(v) => write({ ...cur, tint: v })} /></Row>
+        </>
+      )}
+    </>
+  );
+}
+
 function FillSection({ id, value, placeholder, swatch, opts }: { id: string; value: string; placeholder: string; swatch?: string; opts: Opts }) {
+  const [picking, setPicking] = useState(false);
   const grad = parseGrad(value);
-  const kind = grad?.type ?? 'solid';
+  const image = parseImage(value);
+  const kind = image ? 'image' : grad?.type ?? 'solid';
   const colors = useMemo(() => [{ value: 'none', label: 'none' }, ...opts.colors], [opts]);
   const start = (type: Grad['type']) => {
     const from = value && !grad && value !== 'none' ? value : 'primary.500';
@@ -330,12 +382,13 @@ function FillSection({ id, value, placeholder, swatch, opts }: { id: string; val
   return (
     <Section title="Fill">
       <Row label="Type">
-        <Segmented value={kind} options={['solid', 'linear', 'radial']} labels={{ solid: 'Solid', linear: 'Linear', radial: 'Radial' }}
-          onChange={(v) => (v === 'solid' ? set(id, `fill:${grad?.stops[0]?.c ?? 'surface'}`) : start(v as Grad['type']))} />
+        <Segmented value={kind} options={['solid', 'linear', 'radial', 'image']} labels={{ solid: 'Solid', linear: 'Linear', radial: 'Radial', image: 'Image' }}
+          onChange={(v) => { if (v === 'image') setPicking(true); else if (v === 'solid') void set(id, `fill:${grad?.stops[0]?.c ?? 'surface'}`); else start(v as Grad['type']); }} />
       </Row>
-      {!grad && (
+      {(image || picking) && <ImageFill id={id} image={image} opts={opts} onDone={() => setPicking(false)} />}
+      {!grad && !image && !picking && (
         <Row label="Colour">
-          <ColorField value={value} options={colors} label="Fill" placeholder={placeholder || 'none'} swatch={swatch} onCommit={(v) => set(id, v ? `fill:${v}` : 'unset:fill')} />
+          <ColorField allowNone live="background" value={value} options={colors} label="Fill" placeholder={placeholder || 'none'} swatch={swatch} onCommit={(v) => set(id, v ? `fill:${v}` : 'unset:fill')} />
         </Row>
       )}
       {grad && (
@@ -375,7 +428,7 @@ function StrokeSection({ id, value, inherited, swatch, opts }: { id: string; val
   return (
     <Section title="Border">
       <Row label="Colour">
-        <ColorField value={cur.c} options={opts.colors} label="Border colour" placeholder={inherited || 'none'} swatch={swatch} onCommit={(v) => (v ? write({ ...cur, c: v }) : set(id, 'unset:stroke'))} />
+        <ColorField live="outline" value={cur.c} options={opts.colors} label="Border colour" placeholder={inherited || 'none'} swatch={swatch} onCommit={(v) => (v ? write({ ...cur, c: v }) : set(id, 'unset:stroke'))} />
       </Row>
       {cur.c && (
         <>

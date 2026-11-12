@@ -1,0 +1,16 @@
+Site col wfill w1280 fill:canvas
+  +web3-navbar state=connected
+  +web3-hero
+  Row row gap6 p8 wfill start
+    +swap-card
+    +staking-card
+    Stack col gap4 wfill
+      @TxStatus state=pending confirmations="2/3" "Swap 1 ETH for 3,204 USDC"
+      @TxStatus state=success "Staked 250 ORB"
+      @TxStatus state=failed "Mint 1 Lumen"
+      +network-menu
+  Row2 row gap6 px8 pb8 wfill start
+    +dao-proposal
+    +wallet-modal
+  Tokens col px8 pb8 wfill
+    +token-table

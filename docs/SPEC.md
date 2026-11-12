@@ -171,3 +171,25 @@ Editor initial < 300 KB gz · 60 fps drag with 5k layers · `apply_ops` < 5 ms �
 | 5 | Icon Studio | |
 | 6 | Image Studio (Compose/Edit/Assets) | |
 | 7 | Figma bridge (REST import, plugin export), adapters react-mui/tailwind, PR visual diff | |
+
+## 18. Team app
+
+`rangoli app` hosts organizations and projects. The single-folder `rangoli serve` and `rangoli mcp` modes are unchanged.
+
+**Tenancy.** Org → project → one design. Every tenant row has `org_id`; composite foreign keys keep a row inside its org. Designs, comments and versions live in Postgres. Image bytes live in S3 when `S3_BUCKET` is set, otherwise in Postgres; the `design_assets` row is the access decision either way, and files are served through the app rather than from public or presigned URLs.
+
+**Access.** Row-level security is the boundary. The app logs in as `rangoli_login` and runs requests as `rangoli_app` (no ownership, no BYPASSRLS) with `app.user_id` set per transaction. Credentials are reachable only through SECURITY DEFINER functions. `packages/server/src/app/rls.test.ts` attacks this directly; `npm run test:postgres` runs it on a real server.
+
+| Role | Scope | Can |
+|---|---|---|
+| admin | every project in the org | everything, including people, assignments and skipping a gate (recorded) |
+| designer | assigned projects | edit the plan and design, request reviews, review teammates' work, move stages |
+| reviewer | assigned projects | comment, suggest, approve stages, log findings and feedback; cannot edit |
+
+**Lifecycle.** Discovery → Define → IA & flows → Wireframes → Visual design → Prototype → Usability testing → Handoff → Post-launch → next cycle. Gates in `packages/engine/src/lifecycle.ts` are computed from real data. Work cannot be added ahead of the current stage.
+
+**Review.** Define, IA & flows, Wireframes, Visual design, Usability testing and Handoff need one: `working → in_review → changes_requested → in_review → approved → next stage`. Requesting review needs every check to pass, and freezes that stage's work and the canvas until someone requests changes or the review is withdrawn. A designer cannot decide a review they requested. A decision counts only for its round: entering the stage, requesting review or withdrawing starts a new one. A named version is saved on leaving each design stage.
+
+**Deployment.** One app process per database, enforced by a Postgres advisory lock. See `deploy/aws/`.
+
+**Limits.** Embedded PGlite runs as a single superuser session, so the login-role separation applies only on a Postgres server. Stage gates and freezes are enforced by the server; who may read or write which row is enforced by the database.

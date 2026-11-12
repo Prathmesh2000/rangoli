@@ -1,0 +1,18 @@
+id: TC-007
+feature: export
+title: Token export writes CSS variables with a dark-mode block
+priority: P1
+level: unit
+tags:
+  - smoke
+  - regression
+covers:
+  - AC-4
+steps:
+  - Convert the default tokens with tokensToCss
+expected:
+  - 'CSS contains "--space-3: 12px;"'
+  - CSS contains '[data-mode="dark"]'
+automation:
+  node: packages/engine/src/tokens.test.ts#exports CSS variables with a dark-mode
+    block

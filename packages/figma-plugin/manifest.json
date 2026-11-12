@@ -1,0 +1,14 @@
+{
+  "name": "Rangoli Import",
+  "id": "rangoli-import-dev",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["https://app.rangoli.dev"],
+    "devAllowedDomains": ["http://localhost:4400"],
+    "reasoning": "Uploads the chosen pages and frames to the user's Rangoli project when they start an import with a one-use token."
+  }
+}

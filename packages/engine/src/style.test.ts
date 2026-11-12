@@ -42,7 +42,7 @@ describe('style power', () => {
     expect(css).toContain('border-radius:16px 16px 0 0');
     expect(css).toContain('box-shadow:0px 8px 24px -4px color-mix(in srgb, var(--color-neutral-900) 20%, transparent),0px 1px 2px 0px color-mix(in srgb, var(--color-neutral-900) 8%, transparent)');
     expect(css).toContain('backdrop-filter:blur(12px)');
-    expect(css).toContain('font-family:IBM Plex Sans');
+    expect(css).toContain('font-family:"IBM Plex Sans", sans-serif');
     expect(css).toContain('letter-spacing:-0.02em');
     expect(css).toContain('text-transform:uppercase');
     expect(css).toContain('font-style:italic;text-decoration:underline');

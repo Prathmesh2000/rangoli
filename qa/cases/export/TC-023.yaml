@@ -1,0 +1,18 @@
+id: TC-023
+feature: export
+title: Editor download gets a usable file name for non-English titles
+priority: P3
+level: manual
+technique: equivalence partitioning
+tags:
+  - regression
+  - i18n
+covers:
+  - AC-10
+steps:
+  - Name a document with only Hindi characters, for example "रंगोली"
+  - Download the HTML from the editor
+expected:
+  - The file name contains a readable name or falls back to page.html, and is
+    not "-.html"
+automation: {}
