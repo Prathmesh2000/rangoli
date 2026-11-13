@@ -122,14 +122,25 @@ describe('row level security attack matrix', () => {
     {
       name: 'INSERT design_ops (as itself)',
       sql: (t, a) => [`INSERT INTO design_ops (project_id, org_id, seq, page_id, actor_kind, actor_id, token_id, author, ops, inverse) VALUES ($1, $2, $3, 'p', $4, app_uid(), $5, 't', '[]', '[]') RETURNING 1`, [t.project, t.org, seq++, a.token ? 'agent' : 'human', a.token?.id ?? null]],
-      expect: need('design.edit'),
+      // an agent's change must name a run it has open (migration 011); this one names none
+      expect: (can, a) => can('design.edit') && !a.token,
     },
+    // notes and tasks are requests only from a person holding task.create; never through a token
+    { name: 'INSERT agent_tasks', sql: (t) => [`INSERT INTO agent_tasks (project_id, org_id, kind, author, author_name, body) VALUES ($1, $2, 'task', app_uid(), 'm', 'do it') RETURNING 1`, [t.project, t.org]], expect: (can, a) => can('task.create') && !a.token },
+    // the queue and runs change only through their functions
+    { name: 'UPDATE agent_jobs', sql: (t) => [`UPDATE agent_jobs SET attempts = 0 WHERE project_id = $1 RETURNING 1`, [t.project]], expect: () => false },
+    { name: 'INSERT frame_owners (as itself)', sql: (t) => [`INSERT INTO frame_owners (project_id, org_id, frame_id, owner_id) VALUES ($1, $2, $3, app_uid()) RETURNING 1`, [t.project, t.org, `f${seq++}`]], expect: need('design.edit') },
+    { name: 'INSERT page_agent_policies', sql: (t) => [`INSERT INTO page_agent_policies (project_id, org_id, page_id, mode, set_by) VALUES ($1, $2, $3, 'draft', app_uid()) RETURNING 1`, [t.project, t.org, `pg${seq++}`]], expect: (can, a) => can('design.edit') && !a.token },
     { name: 'INSERT design_pages', sql: (t) => [`INSERT INTO design_pages (project_id, org_id, page_id, data, seq, hash) VALUES ($1, $2, $3, '{}', 1, $4) RETURNING 1`, [t.project, t.org, `p${seq++}`, HASH]], expect: need('design.edit') },
     { name: 'UPDATE projects', sql: (t) => [`UPDATE projects SET name = name WHERE id = $1 RETURNING 1`, [t.project]], expect: need('design.edit') },
     // the lifecycle
-    { name: 'INSERT items (plan)', sql: (t) => [`INSERT INTO items (project_id, org_id, kind, cycle, created_by) VALUES ($1, $2, 'persona', 1, app_uid()) RETURNING 1`, [t.project, t.org]], expect: need('design.edit') },
-    { name: 'INSERT items (evidence)', sql: (t) => [`INSERT INTO items (project_id, org_id, kind, cycle, created_by) VALUES ($1, $2, 'finding', 1, app_uid()) RETURNING 1`, [t.project, t.org]], expect: need('evidence.add') },
-    { name: 'UPDATE items (someone else\'s)', sql: (t) => [`UPDATE items SET title = 'x' WHERE project_id = $1 AND title = 'seed' RETURNING 1`, [t.project]], expect: need('design.edit') },
+    // a persona or a finding is a claim about people: from an agent it is only ever stored held (migration 011)
+    { name: 'INSERT items (plan)', sql: (t) => [`INSERT INTO items (project_id, org_id, kind, cycle, created_by) VALUES ($1, $2, 'persona', 1, app_uid()) RETURNING 1`, [t.project, t.org]], expect: (can, a) => can('design.edit') && !a.token },
+    { name: 'INSERT items (plan, held)', sql: (t) => [`INSERT INTO items (project_id, org_id, kind, cycle, created_by, status) VALUES ($1, $2, 'persona', 1, app_uid(), 'held') RETURNING 1`, [t.project, t.org]], expect: need('design.edit') },
+    { name: 'INSERT items (evidence)', sql: (t) => [`INSERT INTO items (project_id, org_id, kind, cycle, created_by) VALUES ($1, $2, 'finding', 1, app_uid()) RETURNING 1`, [t.project, t.org]], expect: (can, a) => can('evidence.add') && !a.token },
+    // the seed is research, a claim about people: an agent may change it only by leaving it held (migration 011)
+    { name: 'UPDATE items (someone else\'s)', sql: (t) => [`UPDATE items SET title = 'x' WHERE project_id = $1 AND title = 'seed' RETURNING 1`, [t.project]], expect: (can, a) => can('design.edit') && !a.token },
+    { name: 'UPDATE items (someone else\'s, held)', sql: (t) => [`UPDATE items SET title = 'x', status = 'held' WHERE project_id = $1 AND title = 'seed' RETURNING 1`, [t.project]], expect: need('design.edit') },
     { name: 'DELETE items (someone else\'s)', sql: (t) => [`DELETE FROM items WHERE project_id = $1 AND title = 'seed' RETURNING 1`, [t.project]], expect: need('design.edit') },
     { name: 'INSERT stage_events (advance)', sql: (t) => [`INSERT INTO stage_events (project_id, org_id, cycle, kind, from_stage, to_stage, actor) VALUES ($1, $2, 1, 'advance', 'ia', 'wireframes', app_uid()) RETURNING 1`, [t.project, t.org]], expect: need('design.edit') },
     { name: 'INSERT stage_events (override)', sql: (t) => [`INSERT INTO stage_events (project_id, org_id, cycle, kind, from_stage, to_stage, actor) VALUES ($1, $2, 1, 'override', 'ia', 'wireframes', app_uid()) RETURNING 1`, [t.project, t.org]], expect: need('override.strict') },

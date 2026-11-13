@@ -6,8 +6,10 @@ import { openDatabase, tokenActor, withUser, type Database, type Q } from './db.
  * Attacks the database directly as each role, with no application code in front of it.
  * If a policy regresses, this fails even when the HTTP layer would have hidden the problem.
  */
-const TENANT_TABLES = ['org_members', 'invites', 'projects', 'project_members', 'designs', 'design_reviews', 'design_versions', 'design_assets', 'items', 'stage_events', 'stage_signoffs', 'audit_log', 'design_ops', 'design_pages', 'design_checkpoints'];
-const PROJECT_TABLES = ['project_members', 'designs', 'design_reviews', 'design_versions', 'design_assets', 'items', 'stage_events', 'stage_signoffs', 'design_ops', 'design_pages', 'design_checkpoints'];
+/** migration-010: snapshots, approvals, releases, fixes and share links */
+const APPROVAL_TABLES = ['snapshots', 'snapshot_screens', 'snapshot_assets', 'approvals', 'approval_decisions', 'releases', 'fixes', 'share_links'];
+const TENANT_TABLES = ['org_members', 'invites', 'projects', 'project_members', 'designs', 'design_reviews', 'design_versions', 'design_assets', 'items', 'stage_events', 'stage_signoffs', 'audit_log', 'design_ops', 'design_pages', 'design_checkpoints', ...APPROVAL_TABLES, 'agent_tasks', 'agent_jobs', 'agent_runs', 'frame_owners', 'page_agent_policies'];
+const PROJECT_TABLES = ['project_members', 'designs', 'design_reviews', 'design_versions', 'design_assets', 'items', 'stage_events', 'stage_signoffs', 'design_ops', 'design_pages', 'design_checkpoints', ...APPROVAL_TABLES, 'agent_tasks', 'agent_jobs', 'agent_runs', 'frame_owners', 'page_agent_policies'];
 
 describe('row level security', () => {
   let db: Database;
@@ -233,7 +235,14 @@ describe('row level security', () => {
     const token = await mintToken(u.bob, [p1], ['draft']);
     await denied(tokenActor.run(token, () => as(u.bob, (q) => addOp(q, 60, u.bob, null, 'human')))); // a token session claiming no token
     await denied(tokenActor.run(token, () => as(u.bob, (q) => addOp(q, 61, u.bob, '00000000-0000-4000-8000-000000000009', 'agent'))));
-    expect(await tokenActor.run(token, () => as(u.bob, (q) => addOp(q, 3, u.bob, token)))).toHaveLength(1);
+    // an agent's change belongs to a named run it has open (migration 011)
+    await denied(tokenActor.run(token, () => as(u.bob, (q) => addOp(q, 3, u.bob, token))));
+    const run = await tokenActor.run(token, () => as(u.bob, async (q) => (await q<{ id: string }>(`SELECT agent_run_start($1, 'Claude Code', 'log test', 0, NULL, NULL) AS id`, [p1]))[0]!.id));
+    const withRun = (seq: number, touched: string[] = ['n1']) =>
+      tokenActor.run(token, () => as(u.bob, (q) => q(`INSERT INTO design_ops (project_id,org_id,seq,page_id,actor_kind,actor_id,token_id,author,ops,inverse,touched,run_id) VALUES ($1,$2,$3,'p1','agent',$4,$5,'t','[]','[]',$6,$7) RETURNING 1`, [p1, orgA, seq, u.bob, token, touched, run])));
+    expect(await withRun(3)).toHaveLength(1);
+    await tokenActor.run(token, () => as(u.bob, (q) => q(`SELECT agent_run_end($1, 'done', 3, NULL)`, [run])));
+    await denied(withRun(4)); // the run has ended
   });
 
   it('design checkpoints follow who may edit', async () => {
@@ -442,6 +451,250 @@ describe('row level security', () => {
     await expect(as(null, (q) => q(`SELECT auth_throttle_hit('login_email', 'someone@x.io', 60)`))).rejects.toMatchObject({ code: '23514' });
     await as(null, (q) => q(`SELECT auth_throttle_clear('login_email', $1)`, [key]));
     expect((await as(null, (q) => q<{ n: number }>(`SELECT auth_throttle_count('login_email', $1) AS n`, [key])))[0]!.n).toBe(0);
+  });
+
+  it('approvals bind to an immutable snapshot: own reviews, tokens and stale MFA are refused; names and used assets outlive', async () => {
+    const fay = (await as(null, (q) => q<{ id: string }>(`SELECT auth_signup('fay@x.io', 'fay', 'hash') AS id`)))[0]!.id;
+    await db.tx(async (owner) => {
+      await owner(`UPDATE users SET email_verified_at = now() WHERE id = $1`, [fay]);
+      await owner(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'member')`, [orgA, fay]);
+    });
+    await as(u.alice, (q) => q(`INSERT INTO project_members (project_id, org_id, user_id, role, is_approver) VALUES ($1, $2, $3, 'reviewer', true)`, [p1, orgA, fay]));
+    const KEY = 'a'.repeat(16);
+    const SNAP = `INSERT INTO snapshots (project_id, org_id, cycle, stage, kind, name, data, content_hash, library_hash, canon_version, engine_version, signature, signing_key, created_by)
+                  VALUES ($1, $2, 1, 'visual', $3, 'S', '{}', $4, $4, 'rangoli-canon@1', 'e', $4, $5, app_uid()) RETURNING id`;
+    const SCREEN = `INSERT INTO snapshot_screens (snapshot_id, project_id, org_id, screen_key, page_id, screen_hash, root_hash, deps) VALUES ($1, $2, $3, $4, 'p1', $5, $5, '{}')`;
+    const [snap] = await as(u.bob, async (q) => {
+      const rows = await q<{ id: string }>(SNAP, [p1, orgA, 'review', HASH, KEY]);
+      await q(SCREEN, [rows[0]!.id, p1, orgA, 'f1', HASH]);
+      await q(`INSERT INTO snapshot_assets (snapshot_id, project_id, org_id, file, sha256, mime) VALUES ($1, $2, $3, 'a.png', $4, 'image/png')`, [rows[0]!.id, p1, orgA, HASH]);
+      return rows;
+    });
+    const s = snap!.id;
+    // complete when it commits: nothing joins it later, nothing in it changes, nobody deletes it
+    await denied(as(u.bob, (q) => q(SCREEN, [s, p1, orgA, 'f2', HASH])));
+    await denied(as(u.bob, (q) => q(`UPDATE snapshots SET name = 'x' WHERE id = $1`, [s])));
+    await denied(as(u.alice, (q) => q(`DELETE FROM snapshots WHERE id = $1`, [s])));
+    await expect(db.tx((owner) => owner(`UPDATE snapshots SET name = 'x' WHERE id = $1`, [s]))).rejects.toThrow(/cannot be changed/);
+    await expect(db.tx((owner) => owner(`UPDATE snapshot_screens SET screen_hash = $2 WHERE snapshot_id = $1`, [s, 'b'.repeat(64)]))).rejects.toThrow(/cannot be changed/);
+    // a reviewer cannot take one; a release snapshot needs the release capability
+    await denied(as(u.carol, (q) => q(SNAP, [p1, orgA, 'review', HASH, KEY])));
+    expect(await as(u.alice, (q) => q(SNAP, [p1, orgA, 'release', HASH, KEY]))).toHaveLength(1);
+    // the image it uses cannot be deleted, by anyone
+    await expect(as(u.alice, (q) => q(`DELETE FROM design_assets WHERE project_id = $1 AND file = 'a.png'`, [p1]))).rejects.toThrow(/saved snapshot/);
+    await expect(db.tx((owner) => owner(`DELETE FROM design_assets WHERE project_id = $1 AND file = 'a.png'`, [p1]))).rejects.toThrow(/saved snapshot/);
+
+    const ASK = `INSERT INTO approvals (project_id, org_id, snapshot_id, cycle, stage, requested_by) VALUES ($1, $2, $3, 1, 'visual', app_uid()) RETURNING id`;
+    const [byBob] = await as(u.bob, (q) => q<{ id: string }>(ASK, [p1, orgA, s]));
+    const [byAlice] = await as(u.alice, (q) => q<{ id: string }>(ASK, [p1, orgA, s]));
+    await denied(as(u.carol, (q) => q(ASK, [p1, orgA, s]))); // reviewers do not ask for reviews
+    /** a session with the second factor proved `ago` ago; returns that time */
+    const proved = async (who: string, ago = '0 seconds') => {
+      const h = `mfa-${Math.random()}`;
+      await as(null, (q) => q(`SELECT auth_session_create($1, $2, now() + interval '1 day', true)`, [h, who]));
+      return (await db.tx((owner) => owner<{ at: Date }>(`UPDATE auth_sessions SET mfa_at = now() - $2::interval WHERE token_hash = $1 RETURNING mfa_at AS at`, [h, ago])))[0]!.at;
+    };
+    const DECIDE = `INSERT INTO approval_decisions (approval_id, project_id, org_id, snapshot_id, content_hash, approver_id, decision, mfa_at) VALUES ($1, $2, $3, $4, 'forged', app_uid(), 'approved', $5) RETURNING approver_name, content_hash, snapshot_id`;
+    const decide = (who: string, approval: string, mfaAt: Date | null) => as(who, (q) => q<{ approver_name: string; content_hash: string; snapshot_id: string }>(DECIDE, [approval, p1, orgA, s, mfaAt]));
+    // nobody decides their own review: the designer, or the lead who owns the organization
+    await denied(decide(u.bob, byBob!.id, await proved(u.bob)));
+    await denied(decide(u.alice, byAlice!.id, await proved(u.alice)));
+    // from another organization
+    await denied(decide(u.erin, byBob!.id, await proved(u.erin)));
+    // a second factor, proved within five minutes on one of this person's own sessions
+    await expect(decide(fay, byBob!.id, null)).rejects.toThrow(/Confirm it is you/);
+    await expect(decide(fay, byBob!.id, await proved(fay, '10 minutes'))).rejects.toThrow(/Confirm it is you/);
+    await expect(decide(fay, byBob!.id, await proved(u.carol))).rejects.toThrow(/Confirm it is you/);
+    // never through an API token, whatever its scopes
+    const t = await mintToken(fay, [p1], ['read', 'propose', 'draft', 'items', 'export', 'jobs']);
+    const fresh = await proved(fay);
+    await denied(tokenActor.run(t, () => decide(fay, byBob!.id, fresh)));
+    const [d] = await decide(fay, byBob!.id, await proved(fay));
+    // bound to the approval's snapshot and its hash, whatever the statement said
+    expect(d).toMatchObject({ approver_name: 'fay', content_hash: HASH, snapshot_id: s });
+    expect((await as(u.carol, (q) => q<{ s: string }>(`SELECT approval_status($1) AS s`, [byBob!.id])))[0]!.s).toBe('approved');
+    await expect(db.tx((owner) => owner(`UPDATE approval_decisions SET note = 'edited' WHERE approval_id = $1`, [byBob!.id]))).rejects.toThrow(/cannot be changed/);
+    // named approvers only, and only while the review is open
+    const [named] = await as(u.bob, (q) => q<{ id: string }>(`INSERT INTO approvals (project_id, org_id, snapshot_id, cycle, stage, approvers, requested_by) VALUES ($1, $2, $3, 1, 'visual', $4::uuid[], app_uid()) RETURNING id`, [p1, orgA, s, [u.carol]]));
+    await expect(decide(fay, named!.id, await proved(fay))).rejects.toThrow(/not one of them/);
+    await expect(as(u.bob, (q) => q(`INSERT INTO approvals (project_id, org_id, snapshot_id, cycle, stage, approvers, requested_by) VALUES ($1, $2, $3, 1, 'visual', $4::uuid[], app_uid())`, [p1, orgA, s, [u.bob]]))).rejects.toMatchObject({ code: '23514' });
+    expect(await as(u.bob, (q) => q(`UPDATE approvals SET withdrawn_at = now(), withdrawn_by = app_uid() WHERE id = $1 RETURNING 1`, [named!.id]))).toHaveLength(1);
+    await expect(decide(u.carol, named!.id, await proved(u.carol))).rejects.toThrow(/withdrawn/);
+
+    // a release names an approved snapshot; an open review is not one, and agents never release
+    const RELEASE = `INSERT INTO releases (project_id, org_id, cycle, snapshot_id, basis, approval_id, released_by) VALUES ($1, $2, 1, $3, 'approval', $4, app_uid()) RETURNING released_by_name`;
+    await expect(as(u.alice, (q) => q(RELEASE, [p1, orgA, s, byAlice!.id]))).rejects.toThrow(/not approved/);
+    await denied(as(u.carol, (q) => q(RELEASE, [p1, orgA, s, byBob!.id])));
+    const at = await mintToken(u.alice, [p1], ['read', 'draft', 'export']);
+    await denied(tokenActor.run(at, () => as(u.alice, (q) => q(RELEASE, [p1, orgA, s, byBob!.id]))));
+    expect((await as(u.alice, (q) => q<{ released_by_name: string }>(RELEASE, [p1, orgA, s, byBob!.id])))[0]!.released_by_name).toBe('alice');
+
+    // share links: the token hash is never read back, and only people who may share make them
+    const LINK = `INSERT INTO share_links (project_id, org_id, snapshot_id, kind, token_hash, created_by) VALUES ($1, $2, $3, $4, $5, app_uid()) RETURNING id`;
+    await denied(as(u.carol, (q) => q(LINK, [p1, orgA, s, 'stakeholder', 'c'.repeat(64)])));
+    await expect(as(u.bob, (q) => q(`INSERT INTO share_links (project_id, org_id, snapshot_id, kind, token_hash, created_by, expires_at) VALUES ($1, $2, $3, 'stakeholder', $4, app_uid(), now() + interval '400 days')`, [p1, orgA, s, 'd'.repeat(64)]))).rejects.toMatchObject({ code: '23514' });
+    const [link] = await as(u.bob, (q) => q<{ id: string }>(LINK, [p1, orgA, s, 'stakeholder', 'e'.repeat(64)]));
+    await denied(as(u.bob, (q) => q(`SELECT token_hash FROM share_links WHERE id = $1`, [link!.id])));
+    expect(await as(null, (q) => q(`SELECT snapshot_id FROM share_link_open($1)`, ['e'.repeat(64)]))).toHaveLength(1);
+    expect(await as(null, (q) => q(`SELECT file FROM share_link_assets($1)`, ['e'.repeat(64)]))).toHaveLength(1);
+    await as(u.bob, (q) => q(`UPDATE share_links SET revoked_at = now(), revoked_by = app_uid() WHERE id = $1`, [link!.id]));
+    expect(await as(null, (q) => q(`SELECT 1 FROM share_link_open($1)`, ['e'.repeat(64)]))).toHaveLength(0);
+    expect(await as(null, (q) => q(`SELECT 1 FROM share_link_assets($1)`, ['e'.repeat(64)]))).toHaveLength(0);
+    // another organization sees none of it
+    for (const tbl of APPROVAL_TABLES) expect(await as(u.erin, (q) => q(`SELECT 1 FROM ${tbl} WHERE project_id = $1`, [p1])), tbl).toHaveLength(0);
+
+    // the decision keeps the approver's name after the account is gone
+    await db.tx((owner) => owner(`DELETE FROM users WHERE id = $1`, [fay]));
+    const [kept] = await as(u.carol, (q) => q<{ approver_id: string | null; approver_name: string }>(`SELECT approver_id, approver_name FROM approval_decisions WHERE approval_id = $1`, [byBob!.id]));
+    expect(kept).toEqual({ approver_id: null, approver_name: 'fay' });
+    expect((await as(u.carol, (q) => q<{ s: string }>(`SELECT approval_status($1) AS s`, [byBob!.id])))[0]!.s).toBe('approved');
+  });
+
+  // ---------------------------------------------------------------- the agent platform (migration 011)
+
+  const refused = async (p: Promise<unknown>, code = 'P0001') => {
+    await expect(p).rejects.toMatchObject({ code });
+  };
+  const leaveTask = (who: string, body: string, kind = 'task', node: string | null = null) =>
+    as(who, async (q) => (await q<{ id: string }>(`INSERT INTO agent_tasks (project_id,org_id,kind,target_node,author,author_name,body) VALUES ($1,$2,$3,$4,app_uid(),'x',$5) RETURNING id`, [p1, orgA, kind, node, body]))[0]!.id);
+  const viaToken = <T>(token: string, who: string, fn: (q: Q) => Promise<T>) => tokenActor.run(token, () => as(who, fn));
+  const claim = (token: string, who = u.bob, agent = 'Claude Code') =>
+    viaToken(token, who, async (q) => (await q<{ job_id: string; lease_token: string; task_id: string }>(`SELECT job_id, lease_token, task_id FROM agent_job_claim($1, $2, 300)`, [p1, agent]))[0] ?? null);
+  const taskStatus = async (id: string) => (await db.tx((q) => q<{ status: string; failure_reason: string | null }>(`SELECT status, failure_reason FROM agent_tasks WHERE id = $1`, [id])))[0]!;
+  const drainQueue = () => db.tx((q) => q(`UPDATE agent_jobs SET status = 'done', lease_token = NULL, lease_until = NULL WHERE project_id = $1 AND status IN ('waiting', 'leased')`, [p1]));
+
+  it('notes and tasks are requests only from people with task.create; agents never write the queue directly', async () => {
+    await drainQueue();
+    await denied(leaveTask(u.carol, 'reviewers comment, they do not request'));
+    const bobToken = await mintToken(u.bob, [p1], ['read', 'draft', 'jobs']);
+    await denied(tokenActor.run(bobToken, () => leaveTask(u.bob, 'an agent asking itself')));
+    await expect(leaveTask(u.bob, 'a note must be pinned', 'note')).rejects.toMatchObject({ code: '23514' });
+    await denied(leaveTask(u.erin, 'other org'));
+    const id = await leaveTask(u.bob, 'make the card quieter');
+    const [job] = await as(u.carol, (q) => q<{ status: string }>(`SELECT status FROM agent_jobs WHERE task_id = $1`, [id]));
+    expect(job!.status).toBe('waiting');
+    expect(await as(u.erin, (q) => q(`SELECT 1 FROM agent_tasks WHERE project_id = $1`, [p1]))).toHaveLength(0);
+    // the queue's state changes only through its functions
+    await denied(as(u.bob, (q) => q(`UPDATE agent_jobs SET status = 'done' WHERE task_id = $1`, [id])));
+    await denied(as(u.bob, (q) => q(`UPDATE agent_tasks SET status = 'done_ready_to_review' WHERE id = $1`, [id])));
+    await denied(viaToken(bobToken, u.bob, (q) => q(`UPDATE agent_tasks SET status = 'picked_up' WHERE id = $1`, [id])));
+    await denied(as(u.bob, (q) => q(`INSERT INTO agent_runs (project_id,org_id,no,agent_name,intent,start_seq) VALUES ($1,$2,99,'x','y',0)`, [p1, orgA])));
+  });
+
+  it('a lease is claimed once with SKIP LOCKED, fenced by its token, and reaped when it runs out', async () => {
+    await drainQueue();
+    const t1 = await mintToken(u.bob, [p1], ['read', 'draft', 'jobs']);
+    const t2 = await mintToken(u.bob, [p1], ['read', 'draft', 'jobs']);
+    const readOnly = await mintToken(u.bob, [p1], ['read']);
+    const carolToken = await mintToken(u.carol, [p1], ['read', 'propose', 'jobs']);
+    const ids = [];
+    for (let i = 0; i < 4; i++) ids.push(await leaveTask(u.bob, `task ${i}`));
+    await denied(claim(readOnly));
+    await denied(as(u.bob, (q) => q(`SELECT * FROM agent_job_claim($1, 'me', 300)`, [p1]))); // a person is not an agent
+    const got = await Promise.all([claim(t1), claim(t2), claim(t1), claim(t2), claim(t1), claim(carolToken, u.carol)]);
+    const leases = got.filter((x): x is NonNullable<typeof x> => !!x);
+    expect(leases).toHaveLength(4);
+    expect(new Set(leases.map((l) => l.job_id)).size).toBe(4);
+    expect(await Promise.all(leases.map((l) => taskStatus(l.task_id).then((s) => s.status)))).toEqual(['picked_up', 'picked_up', 'picked_up', 'picked_up']);
+    // which token holds which lease, as the database recorded it
+    const holderOf = async (job: string) => {
+      const [r] = await db.tx((q) => q<{ token_id: string }>(`SELECT token_id FROM agent_jobs WHERE id = $1`, [job]));
+      const token = r!.token_id;
+      return { token, who: token === carolToken ? u.carol : u.bob, other: token === t1 ? t2 : t1 };
+    };
+    const [mine, idle, busy] = leases;
+    const { token: holder, other } = await holderOf(mine!.job_id);
+    // finishing as done needs a run; another token cannot use this lease; a wrong lease is fenced out
+    await refused(viaToken(holder, u.bob, (q) => q(`SELECT agent_job_finish($1, $2, 'done', NULL, NULL)`, [mine!.job_id, mine!.lease_token])));
+    await refused(viaToken(other, u.bob, (q) => q(`SELECT agent_run_start($1, 'x', 'y', 0, $2, $3)`, [p1, mine!.job_id, mine!.lease_token])));
+    await refused(viaToken(holder, u.bob, (q) => q(`SELECT agent_job_heartbeat($1, $2, 300)`, [mine!.job_id, '00000000-0000-4000-8000-000000000001'])));
+    const [run] = await viaToken(holder, u.bob, (q) => q<{ id: string }>(`SELECT agent_run_start($1, 'Claude Code', 'quieter card', 5, $2, $3) AS id`, [p1, mine!.job_id, mine!.lease_token]));
+    expect((await taskStatus(mine!.task_id)).status).toBe('run_in_progress');
+    await viaToken(holder, u.bob, (q) => q(`SELECT agent_job_finish($1, $2, 'done', NULL, 'n1')`, [mine!.job_id, mine!.lease_token]));
+    expect((await taskStatus(mine!.task_id)).status).toBe('done_ready_to_review');
+    expect((await db.tx((q) => q<{ status: string }>(`SELECT status FROM agent_runs WHERE id = $1`, [run!.id])))[0]!.status).toBe('done');
+    // a finished job cannot be finished again
+    await refused(viaToken(holder, u.bob, (q) => q(`SELECT agent_job_finish($1, $2, 'failed', 'again', NULL)`, [mine!.job_id, mine!.lease_token])));
+
+    // two leases run out: one before any run (back to waiting), one during a run (could not complete)
+    const { token: busyToken, who: busyWho } = await holderOf(busy!.job_id);
+    await viaToken(busyToken, busyWho, (q) => q(`SELECT agent_run_start($1, 'Cursor', 'busy', 5, $2, $3)`, [p1, busy!.job_id, busy!.lease_token]));
+    await db.tx((q) => q(`UPDATE agent_jobs SET lease_until = now() - interval '1 minute' WHERE id = ANY ($1::uuid[])`, [[idle!.job_id, busy!.job_id]]));
+    const [reaped] = await as(null, (q) => q<{ n: number }>(`SELECT agent_jobs_reap(NULL) AS n`));
+    expect(reaped!.n).toBeGreaterThanOrEqual(2);
+    expect((await taskStatus(idle!.task_id)).status).toBe('waiting_for_agent');
+    const failed = await taskStatus(busy!.task_id);
+    expect(failed.status).toBe('could_not_complete');
+    expect(failed.failure_reason).toMatch(/lease ran out during the run/);
+    // the late writer is fenced out
+    await refused(viaToken(busyToken, busyWho, (q) => q(`SELECT agent_job_heartbeat($1, $2, 300)`, [busy!.job_id, busy!.lease_token])));
+    // requeue is a person's, with task.create
+    await denied(as(u.carol, (q) => q(`SELECT agent_task_requeue($1)`, [busy!.task_id])));
+    await denied(viaToken(t1, u.bob, (q) => q(`SELECT agent_task_requeue($1)`, [busy!.task_id])));
+    await as(u.bob, (q) => q(`SELECT agent_task_requeue($1)`, [busy!.task_id]));
+    expect((await taskStatus(busy!.task_id)).status).toBe('waiting_for_agent');
+    // withdrawing works only before pickup
+    await as(u.bob, (q) => q(`SELECT agent_task_withdraw($1)`, [busy!.task_id]));
+    expect(await db.tx((q) => q(`SELECT 1 FROM agent_jobs WHERE task_id = $1`, [busy!.task_id]))).toHaveLength(0);
+    await refused(as(u.bob, (q) => q(`SELECT agent_task_withdraw($1)`, [mine!.task_id])));
+    await db.tx((q) => q(`UPDATE agent_runs SET status = 'done' WHERE project_id = $1 AND status = 'running'`, [p1]));
+  });
+
+  it('runs: one open per token, ended only by their agent, undone only by a person who can edit', async () => {
+    const t = await mintToken(u.bob, [p1], ['read', 'draft']);
+    const other = await mintToken(u.bob, [p1], ['read', 'draft']);
+    const carolToken = await mintToken(u.carol, [p1], ['read', 'propose']);
+    const [run] = await viaToken(t, u.bob, (q) => q<{ id: string }>(`SELECT agent_run_start($1, 'Claude Code', 'tidy', 0, NULL, NULL) AS id`, [p1]));
+    await refused(viaToken(t, u.bob, (q) => q(`SELECT agent_run_start($1, 'Claude Code', 'again', 0, NULL, NULL)`, [p1])));
+    await denied(as(u.bob, (q) => q(`SELECT agent_run_start($1, 'me', 'a person', 0, NULL, NULL)`, [p1])));
+    await denied(viaToken(await mintToken(u.erin, [p2], ['read']), u.erin, (q) => q(`SELECT agent_run_start($1, 'x', 'y', 0, NULL, NULL)`, [p1])));
+    // a run on a reviewer's token exists, but the database still refuses its design writes
+    const [rr] = await viaToken(carolToken, u.carol, (q) => q<{ id: string }>(`SELECT agent_run_start($1, 'x', 'review', 0, NULL, NULL) AS id`, [p1]));
+    await denied(viaToken(carolToken, u.carol, (q) => q(`INSERT INTO design_ops (project_id,org_id,seq,page_id,actor_kind,actor_id,token_id,author,ops,inverse,run_id) VALUES ($1,$2,700,'p1','agent',$3,$4,'t','[]','[]',$5)`, [p1, orgA, u.carol, carolToken, rr!.id])));
+    // no token or component writes from an agent, even inside its run
+    await denied(viaToken(t, u.bob, (q) => q(`INSERT INTO design_ops (project_id,org_id,seq,page_id,actor_kind,actor_id,token_id,author,ops,inverse,touched,run_id) VALUES ($1,$2,701,'','agent',$3,$4,'t','[]','[]',ARRAY['$tokens'],$5)`, [p1, orgA, u.bob, t, run!.id])));
+    await denied(viaToken(t, u.bob, (q) => q(`INSERT INTO design_ops (project_id,org_id,seq,page_id,actor_kind,actor_id,token_id,author,ops,inverse,touched,run_id) VALUES ($1,$2,702,'','agent',$3,$4,'t','[]','[]',ARRAY['$component:Button'],$5)`, [p1, orgA, u.bob, t, run!.id])));
+    // another token cannot write in this run
+    await denied(viaToken(other, u.bob, (q) => q(`INSERT INTO design_ops (project_id,org_id,seq,page_id,actor_kind,actor_id,token_id,author,ops,inverse,run_id) VALUES ($1,$2,703,'p1','agent',$3,$4,'t','[]','[]',$5)`, [p1, orgA, u.bob, other, run!.id])));
+    // undo is a person's, after the run ends
+    await refused(as(u.bob, (q) => q(`SELECT agent_run_mark_undone($1, '{}')`, [run!.id])));
+    await refused(viaToken(other, u.bob, (q) => q(`SELECT agent_run_end($1, 'done', 1, NULL)`, [run!.id])));
+    await viaToken(t, u.bob, (q) => q(`SELECT agent_run_end($1, 'done', 1, 'tidied')`, [run!.id]));
+    await denied(viaToken(t, u.bob, (q) => q(`SELECT agent_run_mark_undone($1, '{}')`, [run!.id])));
+    await denied(as(u.carol, (q) => q(`SELECT agent_run_mark_undone($1, '{}')`, [run!.id])));
+    await as(u.bob, (q) => q(`SELECT agent_run_mark_undone($1, '{"reverted":3,"stayed":1}')`, [run!.id]));
+    await refused(as(u.bob, (q) => q(`SELECT agent_run_mark_undone($1, '{}')`, [run!.id])));
+    const [row] = await as(u.carol, (q) => q<{ status: string; undone_by: string; no: number }>(`SELECT status, undone_by, no FROM agent_runs WHERE id = $1`, [run!.id]));
+    expect(row).toMatchObject({ status: 'undone', undone_by: u.bob });
+    await viaToken(carolToken, u.carol, (q) => q(`SELECT agent_run_end($1, 'failed', 0, NULL)`, [rr!.id]));
+  });
+
+  it('connection status is the project’s to see, never a token’s; page modes are a person’s to set', async () => {
+    const t = await mintToken(u.bob, [p1], ['read']);
+    const rows = await as(u.carol, (q) => q<{ owner_id: string; mine: boolean; token_name: string }>(`SELECT owner_id, mine, token_name FROM project_agent_connections($1)`, [p1]));
+    expect(rows.some((r) => r.owner_id === u.bob && !r.mine)).toBe(true);
+    expect(Object.keys(rows[0]!)).not.toContain('token_hash');
+    expect(await viaToken(t, u.bob, (q) => q(`SELECT * FROM project_agent_connections($1)`, [p1]))).toHaveLength(0);
+    expect(await as(u.erin, (q) => q(`SELECT * FROM project_agent_connections($1)`, [p1]))).toHaveLength(0);
+    const draftToken = await mintToken(u.bob, [p1], ['read', 'draft']);
+    await denied(viaToken(draftToken, u.bob, (q) => q(`INSERT INTO page_agent_policies (project_id,org_id,page_id,mode,set_by) VALUES ($1,$2,'p1','draft',app_uid())`, [p1, orgA])));
+    await denied(as(u.carol, (q) => q(`INSERT INTO page_agent_policies (project_id,org_id,page_id,mode,set_by) VALUES ($1,$2,'p1','draft',app_uid())`, [p1, orgA])));
+    expect(await as(u.bob, (q) => q(`INSERT INTO page_agent_policies (project_id,org_id,page_id,mode,imported_by,set_by) VALUES ($1,$2,'p1','protected',app_uid(),app_uid()) RETURNING 1`, [p1, orgA]))).toHaveLength(1);
+    // frame owners are recorded as whoever made the frame, never as someone else
+    await denied(as(u.bob, (q) => q(`INSERT INTO frame_owners (project_id,org_id,frame_id,owner_id) VALUES ($1,$2,'f1',$3)`, [p1, orgA, u.alice])));
+    await denied(as(u.carol, (q) => q(`INSERT INTO frame_owners (project_id,org_id,frame_id,owner_id) VALUES ($1,$2,'f1',app_uid())`, [p1, orgA])));
+    expect(await as(u.bob, (q) => q(`INSERT INTO frame_owners (project_id,org_id,frame_id,owner_id) VALUES ($1,$2,'f1',app_uid()) RETURNING 1`, [p1, orgA]))).toHaveLength(1);
+    expect((await as(u.bob, (q) => q<{ solo: boolean }>(`SELECT project_is_solo($1) AS solo`, [p1])))[0]!.solo).toBe(false);
+  });
+
+  it('an agent’s claim about people is held until a person accepts it', async () => {
+    const t = await mintToken(u.alice, [p1], ['read', 'draft', 'items']);
+    await denied(viaToken(t, u.alice, (q) => q(`INSERT INTO items (project_id,org_id,kind,cycle,title,created_by) VALUES ($1,$2,'persona',1,'Pat',$3)`, [p1, orgA, u.alice])));
+    const [held] = await viaToken(t, u.alice, (q) => q<{ id: string }>(`INSERT INTO items (project_id,org_id,kind,cycle,title,created_by,status) VALUES ($1,$2,'persona',1,'Pat',$3,'held') RETURNING id`, [p1, orgA, u.alice]));
+    await denied(viaToken(t, u.alice, (q) => q(`UPDATE items SET status = 'open' WHERE id = $1`, [held!.id])));
+    expect(await as(u.alice, (q) => q(`UPDATE items SET status = 'open' WHERE id = $1 RETURNING 1`, [held!.id]))).toHaveLength(1);
+    // anything that is not about people is not held
+    expect(await viaToken(t, u.alice, (q) => q(`INSERT INTO items (project_id,org_id,kind,cycle,title,created_by) VALUES ($1,$2,'story',1,'s',$3) RETURNING 1`, [p1, orgA, u.alice]))).toHaveLength(1);
   });
 
   it('leaving the org removes project access immediately', async () => {

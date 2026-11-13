@@ -137,7 +137,7 @@ export class DbStore implements DesignStore {
 const HISTORY_WINDOW = 200;
 
 const SET_IDENTITY = `SELECT set_config('app.user_id', $1, true), set_config('app.token_id', $2, true)`;
-const ROW_COLUMNS = `seq::float8 AS seq, actor_id, token_id, author, label, ops, inverse, touched, undo_of::float8 AS undo_of, redo_of::float8 AS redo_of, no_history, (extract(epoch FROM created_at) * 1000)::float8 AS time`;
+const ROW_COLUMNS = `seq::float8 AS seq, actor_id, token_id, author, label, ops, inverse, touched, undo_of::float8 AS undo_of, redo_of::float8 AS redo_of, no_history, run_id, (extract(epoch FROM created_at) * 1000)::float8 AS time`;
 
 interface OpRow {
   seq: number;
@@ -151,10 +151,11 @@ interface OpRow {
   undo_of: number | null;
   redo_of: number | null;
   no_history: boolean;
+  run_id: string | null;
   time: number;
 }
 
-const toEntry = (r: OpRow): ChangeEntry => ({
+const toEntry = (r: OpRow): ChangeEntry & { runId?: string } => ({
   seq: r.seq,
   author: r.author,
   ...(r.label === null ? {} : { label: r.label }),
@@ -167,6 +168,7 @@ const toEntry = (r: OpRow): ChangeEntry => ({
   ...(r.undo_of === null ? {} : { undoOf: r.undo_of }),
   ...(r.redo_of === null ? {} : { redoOf: r.redo_of }),
   ...(r.no_history ? { noHistory: true } : {}),
+  ...(r.run_id ? { runId: r.run_id } : {}),
 });
 
 const verifyHash = (json: string, stored: string, scope: string): void => {
@@ -194,6 +196,11 @@ export class DbDesignLog implements DesignLog {
     });
   }
 
+  /** Every change after `seq`, with its run: for whole-run undo and changes_since. */
+  async readSince(seq: number) {
+    return this.read(async (q) => (await q<OpRow>(`SELECT ${ROW_COLUMNS} FROM design_ops WHERE project_id = $1 AND seq > $2 ORDER BY seq LIMIT 50000`, [this.projectId, seq])).map(toEntry));
+  }
+
   async loadPage(pageId: string) {
     return this.read(async (q) => {
       const [row] = await q<{ seq: number; data: Page; hash: string }>(`SELECT seq::float8 AS seq, data, hash FROM design_pages WHERE project_id = $1 AND page_id = $2`, [this.projectId, pageId]);
@@ -217,9 +224,9 @@ export class DbDesignLog implements DesignLog {
           await q(SET_IDENTITY, [userId ?? '', tokenId ?? '']);
         }
         await q(
-          `INSERT INTO design_ops (project_id, org_id, seq, page_id, actor_kind, actor_id, token_id, author, label, ops, inverse, touched, undo_of, redo_of, no_history)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::json, $11::json, $12, $13, $14, $15)`,
-          [this.projectId, this.orgId, e.seq, rowScope(e), e.tokenId ? 'agent' : 'human', e.actorId ?? null, e.tokenId ?? null, e.author, e.label ?? null, JSON.stringify(e.ops), JSON.stringify(e.inverse), e.touched, e.undoOf ?? null, e.redoOf ?? null, e.noHistory ?? false],
+          `INSERT INTO design_ops (project_id, org_id, seq, page_id, actor_kind, actor_id, token_id, author, label, ops, inverse, touched, undo_of, redo_of, no_history, run_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::json, $11::json, $12, $13, $14, $15, $16)`,
+          [this.projectId, this.orgId, e.seq, rowScope(e), e.tokenId ? 'agent' : 'human', e.actorId ?? null, e.tokenId ?? null, e.author, e.label ?? null, JSON.stringify(e.ops), JSON.stringify(e.inverse), e.touched, e.undoOf ?? null, e.redoOf ?? null, e.noHistory ?? false, (e as { runId?: string }).runId ?? null],
         );
       }
       for (const c of batch.checkpoints) {

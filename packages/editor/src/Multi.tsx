@@ -1,4 +1,5 @@
 import type { RNode } from '@rangoli/engine';
+import { canvasElement } from './retained';
 import { nodeFlags } from './helpers';
 import { getState, rdl, select, toast, useEditor } from './store';
 
@@ -42,9 +43,8 @@ async function align(edge: Edge) {
   const doc = s.doc!;
   const nodes = s.selection.map((id) => doc.findNode(id)?.node).filter((n): n is RNode => !!n && !!n.position);
   if (nodes.length < 2) return toast('error', 'Align works on free-floating layers. Use Absolute in Position, or a Row/Column.');
-  const shadow = document.querySelector('.canvas-zoom > div')?.shadowRoot;
   const zoom = s.zoom;
-  const box = (id: string) => { const r = shadow?.querySelector(`[data-rid="${id}"]`)?.getBoundingClientRect(); return { w: (r?.width ?? 0) / zoom, h: (r?.height ?? 0) / zoom }; };
+  const box = (id: string) => { const r = canvasElement(id)?.getBoundingClientRect(); return { w: (r?.width ?? 0) / zoom, h: (r?.height ?? 0) / zoom }; };
   const items = nodes.map((n) => ({ n, x: n.position!.x, y: n.position!.y, ...box(n.id) }));
   const minX = Math.min(...items.map((i) => i.x)), maxX = Math.max(...items.map((i) => i.x + i.w));
   const minY = Math.min(...items.map((i) => i.y)), maxY = Math.max(...items.map((i) => i.y + i.h));

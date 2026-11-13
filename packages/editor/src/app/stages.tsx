@@ -565,8 +565,13 @@ function Handoff({ j, reload }: WorkProps) {
   return (
     <>
       <div className="work-callout">
-        <p>Developers should be able to build this without guessing. The bundle holds every screen in RDL, tokens, flows, states, assets and your notes.</p>
-        <div className="a-inline"><a className="a-btn a-btn-primary" href={`/api/projects/${j.project.id}/handoff`} download>Download handoff bundle</a><a className="a-btn" href={`/d/${j.project.id}/spec?skin=none`} target="_blank" rel="noopener">Print annotated spec</a></div>
+        <p>Developers should be able to build this without guessing. The bundle holds every screen in RDL, tokens, flows, states, assets and your notes. It is the latest approved version; the working copy comes marked Unapproved.</p>
+        <div className="a-inline">
+          <a className="a-btn a-btn-primary" href={`/api/projects/${j.project.id}/handoff`} download>Download approved bundle</a>
+          <a className="a-btn" href={`/api/projects/${j.project.id}/handoff?snapshot=working`} download>Working copy (unapproved)</a>
+          <Link className="a-btn" href={`/p/${j.project.id}/review`}>Snapshots and share links</Link>
+          <a className="a-btn" href={`/d/${j.project.id}/spec?skin=none`} target="_blank" rel="noopener">Print annotated spec</a>
+        </div>
       </div>
       <section className="work-section">
         <h2 className="a-h2">Component states</h2>

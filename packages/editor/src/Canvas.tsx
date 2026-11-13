@@ -121,6 +121,9 @@ function Cursors({ zoom, origin }: { zoom: number; origin: { x: number; y: numbe
 const COL = 'calc((100% - 264px) / 12)';
 const GRID_CSS = `${FRAME_SCOPE}{position:relative}${FRAME_SCOPE}::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:50;background:repeating-linear-gradient(90deg,rgba(235,64,52,.1) 0 ${COL},transparent 0 calc(${COL} + 24px))}`;
 
+/** Room above and left of the stage on screen at any zoom, so frame titles above the top row stay visible. */
+const CANVAS_MARGIN = 40;
+
 /** Snap distance on screen, in CSS pixels. */
 const SNAP_PX = 6;
 
@@ -135,12 +138,10 @@ export function Canvas() {
   const zoom = useEditor((s) => s.zoom);
   const selection = useEditor((s) => s.selection);
   const hover = useEditor((s) => s.hover);
-  const activePage = useEditor((s) => s.activePage);
   const pageId = useEditor(() => activePageId());
   const empty = useEditor((s) => !s.doc || s.doc.page(activePageId()).children.length === 0);
   const threads = useEditor((s) => s.reviews.threads);
   const compare = useEditor((s) => s.compare);
-  const tool = useEditor((s) => s.tool);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -332,8 +333,9 @@ export function Canvas() {
     // keep the point under the cursor (or the view's centre, for buttons and keys) where it is
     const cursor = zoomAnchor.current ?? { x: scroll.clientWidth / 2, y: scroll.clientHeight / 2 };
     zoomAnchor.current = null;
-    const next = zoomAt({ x: scroll.scrollLeft, y: scroll.scrollTop }, cursor, from, zoom);
-    scroll.scrollTo(next.x, next.y);
+    // the stage starts CANVAS_MARGIN screen pixels into the content, at every zoom
+    const next = zoomAt({ x: scroll.scrollLeft - CANVAS_MARGIN, y: scroll.scrollTop - CANVAS_MARGIN }, cursor, from, zoom);
+    scroll.scrollTo(next.x + CANVAS_MARGIN, next.y + CANVAS_MARGIN);
   }, [zoom]);
 
   // zoom to fit: on first content, and whenever requested
@@ -559,7 +561,6 @@ export function Canvas() {
   };
   const dragBox = frameDrag && boundsOf(frameDrag.ids.map((id) => retainedRef.current?.canvas.bounds(id)).filter((b): b is Rect => !!b));
   const editable = canEdit();
-  void tool;
 
   return (
     <div className={`canvas${panning ? ' is-panning' : ''}${panning === 'drag' ? ' is-grabbing' : ''}`} ref={scrollRef} onScroll={onScroll} data-mode={mode}
@@ -607,7 +608,8 @@ export function Canvas() {
         if (id) select([id]);
       }}
     >
-      <div className="canvas-size" style={{ width: Math.max(stageSize.w * zoom, 1), height: Math.max(stageSize.h * zoom, 1) }}>
+      {/* half a view of slack past the content, so zooming in at the cursor can always scroll to keep it still */}
+      <div className="canvas-size" style={{ paddingLeft: CANVAS_MARGIN, paddingTop: CANVAS_MARGIN, width: `calc(${Math.max(stageSize.w * zoom, 1)}px + 50%)`, height: `calc(${Math.max(stageSize.h * zoom, 1)}px + 50%)` }}>
         <div className="canvas-zoom" style={{ transform: `scale(${zoom})` }}>
           <Cursors zoom={zoom} origin={{ x: stageSize.ox, y: stageSize.oy }} />
           <div ref={hostRef} />
@@ -696,7 +698,6 @@ export function Canvas() {
           {p.count}
         </button>
       ))}
-      <PageBar activePage={activePage} />
       <span className="sr-only" id="canvas-live" aria-live="polite">{live}</span>
       {shortcutsOpen && <ShortcutsDialog onClose={() => { setShortcutsOpen(false); scrollRef.current?.focus({ preventScroll: true }); }} />}
     </div>
@@ -723,10 +724,14 @@ export async function moveFrames(c: RetainedCanvas, ids: string[], dx: number, d
   if (lines.length) await rdl(lines.join('\n'), ids.length === 1 ? `move ${page.nodes[ids[0]!]?.name ?? 'frame'}` : `move ${ids.length} frames`);
 }
 
+const NO_PAGES: { id: string; name: string }[] = [];
+
 /** Pages of the document, with the one on the canvas. Other pages load when opened. */
-function PageBar({ activePage }: { activePage: string | null }) {
-  const pages = useEditor((s) => s.doc?.data.manifest.pages ?? []);
-  if (pages.length < 2) return null;
+export function PageBar() {
+  const activePage = useEditor((s) => s.activePage);
+  const compare = useEditor((s) => s.compare);
+  const pages = useEditor((s) => s.doc?.data.manifest.pages ?? NO_PAGES);
+  if (pages.length < 2 || compare) return null;
   const current = activePage ?? pages[0]!.id;
   return (
     <div className="page-bar" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>

@@ -119,7 +119,8 @@ describe('token scopes', () => {
     expect(scopeForTool('rdl_apply')).toBe('draft');
     expect(scopeForTool('doc_outline')).toBe('read');
     expect(scopeForTool('suggest')).toBe('propose');
-    expect(scopeForTool('agent_requests')).toBe('jobs');
+    expect(scopeForTool('job_claim')).toBe('jobs');
+    expect(scopeForTool('agent_requests')).toBeUndefined();
     expect(toolRefusal('rdl_apply', ['read'])).toMatch(/"draft" scope/);
     expect(toolRefusal('some_new_tool', ['read', 'propose', 'draft', 'items', 'export', 'jobs'])).toMatch(/not available/);
     expect(toolRefusal('doc_outline', ['read'])).toBeNull();
@@ -417,11 +418,15 @@ describe('identity over HTTP', () => {
       const drafter = (await p.post('/api/tokens', { name: 'd', projects: [p1, p2], scopes: ['read', 'draft'] })).body;
       for (const project of [p1, p2]) {
         const c = await mcp(drafter.token, project);
+        // design changes happen in a named run
+        expect(text(await c.callTool({ name: 'rdl_apply', arguments: { script: 'Frame name:Drafted w10 h10' } }))).toMatch(/named run/);
+        expect((await c.callTool({ name: 'run_start', arguments: { intent: 'draft a frame' } })).isError).toBeFalsy();
         const r = await c.callTool({ name: 'rdl_apply', arguments: { script: 'Frame name:Drafted w10 h10' } });
         expect(r.isError, text(r)).toBeFalsy();
+        await c.callTool({ name: 'run_end', arguments: {} });
         await c.close();
       }
-    });
+    }, 20000); // several MCP connections and a named run per project; the 5 s default is too tight under a full parallel run
 
     it('an expired token is refused', async () => {
       const t = (await p.post('/api/tokens', { name: 'e', projects: [p1], scopes: ['read'], days: 1 })).body;

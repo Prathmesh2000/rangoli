@@ -7,7 +7,6 @@ import {
   framesOfScreen,
   MAX_FRAME_SIZE,
   SCREEN_DEVICES,
-  serializeRdl,
   WF_DEVICES,
   WF_TEMPLATE_IDS,
   wireframeScript,
@@ -25,6 +24,8 @@ import type { Q } from '../db.js';
 import { HttpError, notFound } from '../http/errors.js';
 import { U, type Router } from '../http/router.js';
 import { actor } from '../store.js';
+import type { Snapshots } from '../snapshots/snapshots.js';
+import { buildHandoff, type HandoffBundle } from './handoff.js';
 import type { Lifecycle } from './journey.js';
 
 const preset = z.enum(Object.keys(SCREEN_DEVICES) as [ScreenDevicePreset, ...ScreenDevicePreset[]]);
@@ -43,7 +44,7 @@ const screenIn = async (q: Q, projectId: string, screenId: string) => {
   return { orgId: p.org_id, screen, frames };
 };
 
-export function registerWireframeRoutes(router: Router, designs: Designs, lifecycle: Lifecycle): void {
+export function registerWireframeRoutes(router: Router, designs: Designs, lifecycle: Lifecycle, snapshots: Snapshots): void {
   const design = designs.open;
   const { journey, loadForMove } = lifecycle;
   const on = router.on.bind(router);
@@ -168,42 +169,47 @@ export function registerWireframeRoutes(router: Router, designs: Designs, lifecy
     c.json(200, { queued: screens.length });
   });
 
+  /**
+   * The handoff bundle, read from a named snapshot (?snapshot=<id>), by default the latest approved one. The working
+   * copy (?snapshot=working, or when nothing is approved yet) comes back marked Unapproved.
+   */
   on('GET', `/api/projects/${U}/handoff`, async (c) => {
     const j = await journey(c.user.id, c.p[0]!);
-    const { session } = await design(c.p[0]!, j.project.org_id, c.user.id);
-    const doc = session.doc;
-    const by = (k: ItemKind) => j.items.filter((i) => i.kind === k);
-    const isInFrame = (node: string, frame: string | undefined) => {
-      for (let cur: string | undefined = node; cur; cur = doc.findNode(cur)?.node.parent) if (cur === frame) return true;
-      return false;
-    };
-    const rdlOf = (frame: string | undefined) => (frame && doc.findNode(frame) ? serializeRdl(doc, { roots: [frame] }) : null);
-    const bundle = {
-      project: j.project.name,
-      cycle: j.project.cycle,
-      workType: j.workType.id,
-      problem: by('problem')[0]?.body ?? '',
-      tokens: doc.data.tokens,
-      assets: Object.values(doc.data.assets ?? {}),
-      screens: by('screen').map((s) => {
-        const frames = framesOfScreen(s, j.screenFrames);
-        return {
-          annotations: annotationsOf(session.reviews).filter((a) => frames.some((f) => isInFrame(a.node, f))).map(({ n, body }) => ({ n, body })),
-          name: s.title,
-          purpose: s.body,
-          spec: s.data.spec ?? '',
-          states: s.data.states ?? {},
-          frame: s.data.frame ?? null,
-          rdl: rdlOf(s.data.frame as string | undefined),
-          devices: frames.map((f) => {
-            const link = j.screenFrames.find((x) => x.frame === f);
-            return { device: link?.device ?? 'desktop', w: link?.w ?? null, h: link?.h ?? null, frame: f, primary: f === s.data.frame, rdl: rdlOf(f) };
-          }),
-        };
-      }),
-      flows: by('flow').map((f) => ({ name: f.title, steps: ((f.data.steps as string[] | undefined) ?? []).map((id) => j.items.find((i) => i.id === id)?.title) })),
-    };
-    c.res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-disposition': `attachment; filename="handoff-cycle-${j.project.cycle}.json"` });
+    requireCapability(j.can, 'export.view', 'Your role in this project cannot open the handoff bundle.');
+    const which = c.url.searchParams.get('snapshot');
+    if (which && which !== 'working' && !z.string().uuid().safeParse(which).success) throw new HttpError(400, 'That snapshot id is not valid.');
+    const picked = which === 'working' ? null : await c.as(async (q) => {
+      const id = which ?? (await snapshots.latestApproved(q, c.p[0]!))?.id;
+      if (!id) return null;
+      const snap = await snapshots.load(q, c.p[0]!, id);
+      const by = await q<{ name: string; at: string }>(
+        `SELECT d.approver_name AS name, d.created_at AS at FROM approval_decisions d JOIN approvals a ON a.id = d.approval_id WHERE a.snapshot_id = $1 AND d.decision = 'approved' AND approval_status(a.id) = 'approved' ORDER BY d.created_at`,
+        [id],
+      );
+      return { snap, by };
+    });
+    let bundle: HandoffBundle;
+    if (picked) {
+      const { snap, by } = picked;
+      const ref = { id: snap.id, name: snap.name, contentHash: snap.content_hash, libraryHash: snap.library_hash, canonVersion: snap.canon_version, engineVersion: snap.engine_version, signature: snap.signature, signingKey: snap.signing_key, createdAt: new Date(snap.created_at).toISOString(), createdBy: snap.created_by_name };
+      bundle = buildHandoff(
+        { project: j.project.name, cycle: snap.cycle, workType: j.workType.id, data: snap.data, items: snap.items, frames: snap.frames, annotations: snap.annotations },
+        by.length ? { status: 'approved', snapshot: ref, approvedBy: by.map((d) => ({ name: d.name, at: new Date(d.at).toISOString() })) } : { status: 'snapshot', snapshot: ref, approvedBy: [] },
+      );
+    } else {
+      const { session } = await design(c.p[0]!, j.project.org_id, c.user.id);
+      bundle = buildHandoff(
+        { project: j.project.name, cycle: j.project.cycle, workType: j.workType.id, data: session.doc.data, items: j.items, frames: j.screenFrames, annotations: annotationsOf(session.reviews) },
+        { status: 'unapproved', snapshot: null, approvedBy: [] },
+      );
+    }
+    const tag = bundle.unapproved ? 'unapproved' : bundle.snapshot!.contentHash.slice(0, 12);
+    c.res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-rangoli-approval': bundle.approval,
+      'content-disposition': `attachment; filename="handoff-cycle-${bundle.cycle}-${tag}.json"`,
+    });
     c.res.end(JSON.stringify(bundle, null, 2));
   });
 }

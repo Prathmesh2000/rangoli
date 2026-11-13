@@ -22,7 +22,7 @@ try {
   await admin.connect();
   await admin.query(`CREATE ROLE rds_master LOGIN PASSWORD 'masterpw' CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`);
   console.log((await admin.query('SHOW server_version')).rows[0].server_version, '— master account is not a superuser');
-  for (const suite of ['rls', 'rls-matrix', 'access/capabilities', 'app']) {
+  for (const suite of ['rls', 'rls-matrix', 'access/capabilities', 'app', 'reviews/approvals']) {
     const db = `rangoli_${suite.replace(/[^a-z0-9]/g, '_')}`;
     await admin.query(`CREATE DATABASE ${db} OWNER rds_master`);
     const ownerUrl = url('rds_master', 'masterpw', db);

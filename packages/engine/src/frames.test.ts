@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RangoliDocument, type ChangeEntry, type Op } from './document.js';
 import { createDocument } from './components.js';
 import { applyRdl } from './rdl.js';
-import { renderCss, renderFragment } from './render.js';
+import { renderComponentCss, renderCss, renderFragment } from './render.js';
 import { FrameRenderer, frameRootOf } from './frames.js';
 import type { ComponentDef, RNode, TokenTree } from './model.js';
 
@@ -212,6 +212,32 @@ describe('FrameRenderer: incremental render equals full render', () => {
     expect(d.rendered).toBe(0); // a colour value is a CSS variable: no frame markup reads it
     expect(d.changed).toEqual([]);
     expect(fr.css()).toBe(full(doc, { editorAttrs: true } as never).css);
+  });
+
+  it('a token value change names the variables, and only frames reading them need the new values', () => {
+    const doc = sampleDoc();
+    const fr = new FrameRenderer({ editorAttrs: true });
+    const d0 = fr.sync(doc, null);
+    expect(d0.tokenVars).toBeNull(); // a full sync is not limited to variables
+    // a token nothing reads: the shared CSS changes, no frame needs restyling
+    const unused = Object.keys(doc.data.tokens).length ? doc.setToken('color.unusedProbe', '#123456') : null;
+    if (unused) {
+      const d = fr.sync(doc, unused.touched);
+      expect(d.tokenVars).toContain('--color-unusedProbe');
+      expect(fr.framesReading(d.tokenVars!)).toEqual([]);
+    }
+    const res = doc.setToken('color.primary.600', '#ff0000');
+    const d = fr.sync(doc, res.touched);
+    expect(d.tokenVars).toContain('--color-primary-600'); // and tokens that alias it (resolved values)
+    expect(d.tokenVars).toContain('--color-action-primary');
+    const reading = fr.framesReading(d.tokenVars!);
+    // exactly the frames whose markup, rules or component CSS read the variable
+    for (const id of d.order) {
+      const f = fr.frame(id)!;
+      const text = `${f.html}${f.css}${renderComponentCss(f.used)}`;
+      const reads = d.tokenVars!.some((v) => text.includes(`var(${v}`));
+      expect(reading.includes(id), id).toBe(reads);
+    }
   });
 
   it('a motion change touches only the motion CSS', () => {

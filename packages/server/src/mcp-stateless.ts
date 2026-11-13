@@ -78,7 +78,11 @@ export async function serverTarget(make: () => McpServer | Promise<McpServer>, i
     listTools: async () => (await client.listTools()).tools as ToolDef[],
     callTool: async (name, args) => {
       try {
-        return (await client.callTool({ name, arguments: args }, undefined, { timeout: 120_000 })) as ToolResult;
+        const out = (await client.callTool({ name, arguments: args }, undefined, { timeout: 120_000 })) as ToolResult;
+        // the SDK reports an unknown tool as an error result; the protocol answer is Invalid Params
+        const first = out.content[0] as { text?: string } | undefined;
+        if (out.isError && new RegExp(`^MCP error -32602: Tool ${name.replace(/[^\w-]/g, '')} not found`).test(first?.text ?? '')) return null;
+        return out;
       } catch (e) {
         if (/not found/i.test(e instanceof Error ? e.message : '')) return null;
         throw e;

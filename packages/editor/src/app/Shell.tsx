@@ -6,6 +6,7 @@ import { Admin } from './Admin';
 import { ApiError, Failed, Field, ErrorLine, get, Link, Loading, Modal, navigate, post, del, useAction, useLoad, usePath, ago, type Me, type OrgSummary } from './core';
 import { Journey } from './Journey';
 import { Projects } from './Projects';
+import { ReviewPage } from './Review';
 
 function safeNext(fallback = '/'): string {
   const next = new URLSearchParams(location.search).get('next');
@@ -321,7 +322,7 @@ function Tokens({ me, onClose, projectHint }: { me: Me; onClose: () => void; pro
 }
 
 /** Asks for the password (or a code) again when the server wants a fresh proof, then retries. */
-function StepUp({ kind, onDone, onCancel }: { kind: 'password' | 'mfa'; onDone: () => void; onCancel: () => void }) {
+export function StepUp({ kind, onDone, onCancel }: { kind: 'password' | 'mfa'; onDone: () => void; onCancel: () => void }) {
   const [value, setValue] = useState('');
   const { busy, error, run } = useAction();
   return (
@@ -523,6 +524,7 @@ export function Shell() {
   const p = /^\/p\/([0-9a-f-]{36})(?:\/([a-z]+))?$/.exec(pathname);
   if (p) {
     if (p[2] === 'design') return <DesignPage projectId={p[1]!} me={data} />;
+    if (p[2] === 'review') return <ReviewPage projectId={p[1]!} me={data} />;
     return <Journey me={data} projectId={p[1]!} stage={p[2]} />;
   }
   return <Failed error={{ status: 404, message: '' } as never} />;

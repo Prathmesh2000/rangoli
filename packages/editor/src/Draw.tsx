@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { RangoliDocument } from '@rangoli/engine';
 import { canEdit, getState, rdl, select, setTool, useEditor, type Tool } from './store';
 import { snapper } from './dnd';
+import { canvasElementsAt } from './retained';
+import { shortcutLabel, useKeymap, type Action } from './keymap';
 
 /**
  * Drawing tools. Everything drawn becomes ordinary RDL (absolute layers, pen paths via d:"…"), so a
@@ -17,26 +19,27 @@ const ICONS: Record<Tool, React.ReactNode> = {
   pen: <path d="M12 3l5 9-5 8-5-8zM12 3v9M9 21h6" />,
   text: <path d="M5 6V4h14v2M12 4v16M9 20h6" />,
 };
-const TOOLS: { id: Tool; name: string; key: string }[] = [
-  { id: 'select', name: 'Select and move', key: 'V' },
-  { id: 'frame', name: 'Frame', key: 'F' },
-  { id: 'rect', name: 'Rectangle', key: 'R' },
-  { id: 'ellipse', name: 'Ellipse', key: 'O' },
-  { id: 'line', name: 'Line', key: 'L' },
-  { id: 'pen', name: 'Pen: click for corners, drag for curves, Enter to finish', key: 'P' },
-  { id: 'text', name: 'Text', key: 'T' },
+const TOOLS: { id: Tool; name: string }[] = [
+  { id: 'select', name: 'Select and move' },
+  { id: 'frame', name: 'Frame: drag, or click for 320 by 240' },
+  { id: 'rect', name: 'Rectangle: drag, or click for 120 by 120' },
+  { id: 'ellipse', name: 'Ellipse: drag, or click for 120 by 120' },
+  { id: 'line', name: 'Line: drag, or click for 120 long' },
+  { id: 'pen', name: 'Pen: click for corners, drag for curves, Enter to finish' },
+  { id: 'text', name: 'Text: click to place' },
 ];
-export const TOOL_KEYS: Record<string, Tool> = Object.fromEntries(TOOLS.map((t) => [t.key.toLowerCase(), t.id]));
 
 export function DrawTools() {
   const tool = useEditor((s) => s.tool);
   const compare = useEditor((s) => s.compare);
   useEditor((s) => s.role);
+  useEditor((s) => s.activePage);
+  useKeymap();
   if (!canEdit() || compare) return null;
   return (
     <div className="draw-tools" role="toolbar" aria-label="Drawing tools" aria-orientation="vertical">
       {TOOLS.map((t) => (
-        <button key={t.id} className="draw-tool" aria-pressed={tool === t.id} aria-label={t.name} title={`${t.name} (${t.key})`} onClick={() => setTool(t.id)}>
+        <button key={t.id} className="draw-tool" aria-pressed={tool === t.id} aria-label={t.name} aria-keyshortcuts={shortcutLabel(`tool.${t.id}` as Action) || undefined} title={`${t.name}${shortcutLabel(`tool.${t.id}` as Action) ? ` (${shortcutLabel(`tool.${t.id}` as Action)})` : ''}`} onClick={() => setTool(t.id)}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICONS[t.id]}</svg>
         </button>
       ))}
@@ -47,9 +50,9 @@ export function DrawTools() {
 interface Target { id: string | null; left: number; top: number }
 
 /** Deepest frame under a screen point: drawn layers go inside it, in its own coordinates. */
-function containerAt(shadow: ShadowRoot, doc: RangoliDocument, cx: number, cy: number): Target {
-  const els = [...shadow.querySelectorAll<HTMLElement>('[data-rid]')].reverse();
-  for (const el of els) {
+function containerAt(doc: RangoliDocument, cx: number, cy: number): Target {
+  // only the frames under the point are searched (frame index), each in its own shadow root
+  for (const el of canvasElementsAt(cx, cy)) {
     const r = el.getBoundingClientRect();
     if (!r.width || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
     const node = doc.findNode(el.getAttribute('data-rid')!)?.node;
@@ -82,7 +85,7 @@ async function place(target: Target, line: string, at: string, label: string) {
   setTool('select');
 }
 
-export function DrawLayer({ shadow, scroll }: { shadow: ShadowRoot | null; scroll: HTMLDivElement | null }) {
+export function DrawLayer({ scroll }: { scroll: HTMLDivElement | null }) {
   const tool = useEditor((s) => s.tool);
   const zoom = useEditor((s) => s.zoom);
   const [drag, setDrag] = useState<{ t: Target; sx: number; sy: number; cx: number; cy: number; shift: boolean } | null>(null);
@@ -118,12 +121,12 @@ export function DrawLayer({ shadow, scroll }: { shadow: ShadowRoot | null; scrol
   const doc = getState().doc;
 
   const down = (e: React.PointerEvent) => {
-    if (e.button !== 0 || !shadow || !doc) return;
+    if (e.button !== 0 || !doc) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (tool === 'pen') {
       const p = penRef.current;
-      const t = p?.t ?? containerAt(shadow, doc, e.clientX, e.clientY);
+      const t = p?.t ?? containerAt(doc, e.clientX, e.clientY);
       const x = (e.clientX - t.left) / zoom, y = (e.clientY - t.top) / zoom;
       if (p && p.pts.length > 2 && Math.hypot(x - p.pts[0]!.x, y - p.pts[0]!.y) * zoom < 8) return finishPen(true);
       const last = p?.pts.at(-1);
@@ -131,7 +134,7 @@ export function DrawLayer({ shadow, scroll }: { shadow: ShadowRoot | null; scrol
       setPen({ t, pts: [...(p?.pts ?? []), { x, y, hx: 0, hy: 0 }], handle: true, mx: x, my: y });
       return;
     }
-    setDrag({ t: containerAt(shadow, doc, e.clientX, e.clientY), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, shift: e.shiftKey });
+    setDrag({ t: containerAt(doc, e.clientX, e.clientY), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, shift: e.shiftKey });
   };
   const move = (e: React.PointerEvent) => {
     if (penRef.current) {

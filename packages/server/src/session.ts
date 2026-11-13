@@ -480,6 +480,28 @@ export class Session extends EventEmitter<SessionEvents> {
     return r;
   }
 
+  // ---------------------------------------------------------------- pages
+
+  /**
+   * Add an empty page. The engine has no page op yet, so this is not an undo step and is saved with the whole
+   * document; with the operation log on, a page needs that op to survive a reload, so it is refused there.
+   */
+  createPage(name: string): { id: string; name: string } {
+    if (this.logEnabled) throw new Error('Adding pages is not available while the operation log is on.');
+    const clean = name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80) || 'Page';
+    const ids = new Set(this.doc.data.manifest.pages.map((p) => p.id));
+    let n = ids.size + 1;
+    while (ids.has(`p${n}`)) n++;
+    const id = `p${n}`;
+    this.doc.data.manifest.pages.push({ id, name: clean });
+    this.doc.data.pages[id] = { id, name: clean, children: [], nodes: {} };
+    this.docDirty = true;
+    this.store.noteDocChange?.();
+    this.scheduleSave();
+    this.emit('saved');
+    return { id, name: clean };
+  }
+
   // ---------------------------------------------------------------- named runs
 
   /** Run `fn` inside a named run: its changes carry the run id, and its writes count as the run's heartbeat. */

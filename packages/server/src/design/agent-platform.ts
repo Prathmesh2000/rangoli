@@ -412,7 +412,7 @@ export class LocalAgentPlatform extends EventEmitter<AgentPlatformEvents> implem
   }
 
   private agentKey(agent: AgentIdentity): string {
-    return agent.tokenId ?? `local:${agent.agentName}`;
+    return agent.tokenId ?? "local";
   }
 
   async startRun(agent: AgentIdentity, input: { intent: string; startSeq: number; jobId?: string; leaseToken?: string }): Promise<RunView> {

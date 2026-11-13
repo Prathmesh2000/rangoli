@@ -45,7 +45,7 @@ ${FRAME_SCOPE}{background-clip:padding-box}
 /** The outer root: a stage of absolutely placed frame hosts. */
 const OUTER_CSS = `:host{display:block}
 .stage{position:relative}
-.fh{position:absolute;left:0;top:0;contain:layout style}
+.fh{position:absolute;left:0;top:0;contain:layout style;content-visibility:auto}
 .fh[data-parked]{box-shadow:inset 0 0 0 1px rgb(0 0 0 / .06)}
 `;
 
@@ -104,6 +104,8 @@ interface Host {
   y: number;
   /** a top-level frame placed by its own CSS (absolute): the host stays at the page origin */
   selfPlaced: boolean;
+  /** background colour for the parked placeholder */
+  bg?: string;
 }
 
 const sheetOf = (css: string) => {
@@ -440,6 +442,14 @@ export class RetainedCanvas {
       tpl.innerHTML = html;
       el = tpl.content.firstElementChild;
     }
+    // node-level patch of a mounted frame: only what changed is touched, so a text edit restyles one node
+    // (ARCHITECTURE.md section 4). Frames with live 3D scenes are replaced, since the scene owns its DOM.
+    if (h.el && el && !h.parked && h.el.tagName === el.tagName && !el.querySelector('.rk-3d') && !el.matches('.rk-3d')) {
+      morph(h.el, el);
+      h.stale = false;
+      this.adopt(h);
+      return;
+    }
     if (h.el) h.el.remove();
     if (h.parked) { h.parked = false; h.host.removeAttribute('data-parked'); h.host.style.width = h.host.style.height = h.host.style.background = ''; }
     h.defs = null;
@@ -454,7 +464,7 @@ export class RetainedCanvas {
 
   private park(h: Host): void {
     if (!h.size) return;
-    const bg = h.el ? getComputedStyle(h.el).backgroundColor : '';
+    const bg = h.bg ?? '';
     this.stopScenes(h.id);
     h.el?.remove();
     h.el = null;
@@ -488,6 +498,11 @@ export class RetainedCanvas {
     h.size = er
       ? { w, h: ht, lx: (er.left - hr.left) / z, ly: (er.top - hr.top) / z, fw: er.width / z, fh: er.height / z }
       : { w, h: ht, lx: 0, ly: 0, fw: w, fh: ht };
+    // the placeholder's colour, read now while the frame's style is fresh (parking must not force style)
+    h.bg = h.el ? getComputedStyle(h.el).backgroundColor : '';
+    // off screen, a mounted frame skips style and layout (content-visibility) but keeps its size and cached render
+    const cis = `auto ${w}px auto ${ht}px`;
+    if (h.host.style.containIntrinsicSize !== cis) h.host.style.containIntrinsicSize = cis;
   }
 
   /** The stage's scale on screen (the canvas zooms with a transform on an ancestor). */
@@ -596,6 +611,39 @@ export class RetainedCanvas {
     this.scenes.get(id)?.forEach((d) => d());
     this.scenes.delete(id);
   }
+}
+
+/**
+ * Make `cur` equal `next` (same tag), touching only differing attributes, text and children. Children are
+ * matched by position, and by data-rid when ids line up, so an inserted layer does not rewrite its siblings.
+ */
+export function morph(cur: Element, next: Element): void {
+  // attributes
+  for (const a of [...cur.attributes]) if (!next.hasAttribute(a.name)) cur.removeAttribute(a.name);
+  for (const a of [...next.attributes]) if (cur.getAttribute(a.name) !== a.value) cur.setAttribute(a.name, a.value);
+  if (cur instanceof HTMLTemplateElement || cur.tagName === 'svg' && cur.innerHTML === next.innerHTML) return;
+  const want = [...next.childNodes];
+  let have = [...cur.childNodes];
+  const rid = (n: ChildNode | undefined) => (n instanceof Element ? n.getAttribute('data-rid') : null);
+  for (let i = 0; i < want.length; i++) {
+    const w = want[i]!;
+    let c: ChildNode | undefined = have[i];
+    // a layer that moved or was inserted: find the node with the same id further on
+    const id = rid(w);
+    if (id && rid(c) !== id) {
+      const found = have.findIndex((n, j) => j > i && rid(n) === id);
+      if (found > 0) { const n = have[found]!; cur.insertBefore(n, c ?? null); have.splice(found, 1); have.splice(i, 0, n); c = n; }
+    }
+    if (c && c.nodeType === w.nodeType && (c.nodeType !== Node.ELEMENT_NODE || (c as Element).tagName === (w as Element).tagName)) {
+      if (c.nodeType === Node.ELEMENT_NODE) morph(c as Element, w as Element);
+      else if (c.nodeValue !== w.nodeValue) c.nodeValue = w.nodeValue;
+      continue;
+    }
+    if (c) { cur.replaceChild(w, c); have[i] = w; }
+    else { cur.appendChild(w); have.push(w); }
+  }
+  have = [...cur.childNodes];
+  for (let i = have.length - 1; i >= want.length; i--) have[i]!.remove();
 }
 
 /** The live main canvas, for code outside Canvas.tsx that needs layer elements (pickers, drag and drop). */

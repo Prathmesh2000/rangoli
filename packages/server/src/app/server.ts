@@ -21,6 +21,8 @@ import { createAccessPublicRoutes, registerAccessRoutes } from './access/routes.
 import { createProjectAccess } from './access/roles.js';
 import { createDesigns } from './agents/designs.js';
 import { agentOptions } from './agents/mcp.js';
+import { createOrgMcp } from './agents/org-mcp.js';
+import { startLeaseReaper } from './agents/platform-db.js';
 import { createDesignPlane } from './agents/plane.js';
 import { withUser, type Database } from './db.js';
 import { readBody, parseJson } from './http/body.js';
@@ -40,7 +42,12 @@ import { registerItemRoutes } from './projects/item-routes.js';
 import { createLifecycle, type Lifecycle } from './projects/journey.js';
 import { registerProjectRoutes } from './projects/routes.js';
 import { registerWireframeRoutes } from './projects/wireframes.js';
+import { registerReleaseRoutes } from './releases/routes.js';
 import { registerReviewRoutes } from './reviews/routes.js';
+import { registerSnapshotRoutes } from './snapshots/routes.js';
+import { createShareServer } from './snapshots/share.js';
+import { resolveSigner } from './snapshots/signing.js';
+import { createSnapshots } from './snapshots/snapshots.js';
 
 export interface AppOptions {
   db: Database;
@@ -56,6 +63,8 @@ export interface AppOptions {
   mail?: Mailer;
   /** MFA key, trusted proxies, throttle limits; read from the environment when not given */
   identity?: IdentityOptions;
+  /** RANGOLI_SIGNING_KEY: signs snapshot hashes; read from the environment when not given */
+  signingKey?: string;
 }
 
 export interface AppServer {
@@ -92,9 +101,13 @@ export async function startApp(opts: AppOptions): Promise<AppServer> {
   const projectAccess = createProjectAccess(as);
   // the journey needs an open design, and an open design's agents need the journey: bound once both exist
   let lifecycle: Lifecycle | undefined;
-  const designs = createDesigns(core, (projectId, access, session) => agentOptions({ projectAccess, journey: (u, p) => lifecycle!.journey(u, p), tokenScopes: createTokenGrants(as) }, projectId, access, session));
+  const agentDeps = { db, projectAccess, journey: (u: string, p: string) => lifecycle!.journey(u, p), tokenScopes: createTokenGrants(as) };
+  const designs = createDesigns(core, (projectId, access, session) => agentOptions(agentDeps, projectId, access, session));
   lifecycle = createLifecycle(as, designs);
   const designPlane = createDesignPlane(sessions, projectAccess, designs);
+  // the organization's MCP endpoint, and expired job leases reaped once a minute
+  const orgMcp = createOrgMcp({ ...agentDeps, as, sessions, designs });
+  const stopReaper = startLeaseReaper(db);
 
   const publicRoutes = [createIdentityPublicRoutes(core, sessions), createAccessPublicRoutes(core)];
   const router = new Router();
@@ -103,8 +116,13 @@ export async function startApp(opts: AppOptions): Promise<AppServer> {
   registerAccessRoutes(router, core);
   registerProjectRoutes(router, core, designs, lifecycle);
   registerItemRoutes(router, projectAccess, designs);
-  registerReviewRoutes(router, core, designs, lifecycle);
-  registerWireframeRoutes(router, designs, lifecycle);
+  // snapshots are signed with a key from configuration (KMS later); a hosted deployment refuses to start without one
+  const snapshots = createSnapshots(designs, resolveSigner({ hosted: identity.hosted, key: opts.signingKey }), opts.blobs);
+  registerReviewRoutes(router, core, designs, lifecycle, snapshots);
+  registerWireframeRoutes(router, designs, lifecycle, snapshots);
+  registerSnapshotRoutes(router, core, designs, lifecycle, snapshots);
+  registerReleaseRoutes(router, lifecycle, snapshots);
+  const shareLinks = createShareServer(core, snapshots);
 
   const ready = readinessProbe(() => as(null, (q) => q('SELECT 1')));
 
@@ -124,6 +142,7 @@ export async function startApp(opts: AppOptions): Promise<AppServer> {
 
       const d = new RegExp(`^/d/${U}(/.*)?$`).exec(path);
       if (d) return await designPlane(req, res, url, d[1]!, d[2] ?? '/');
+      if (path === '/mcp') return await orgMcp(req, res, () => readBody(req));
 
       if (path.startsWith('/api/')) {
         assertApiWrite(req);
@@ -146,6 +165,9 @@ export async function startApp(opts: AppOptions): Promise<AppServer> {
         throw notFound();
       }
 
+      // snapshot-only share links: no session, static, no scripts
+      if (path.startsWith('/s/') && (await shareLinks(req, res, path))) return;
+
       await serveEditor(req, res, path);
     } catch (e) {
       sendError(e, res, json);
@@ -161,6 +183,7 @@ export async function startApp(opts: AppOptions): Promise<AppServer> {
     url: `http://127.0.0.1:${port}/`,
     server,
     close: async () => {
+      stopReaper();
       await designs.close();
       await new Promise<void>((r) => {
         server.close(() => r());

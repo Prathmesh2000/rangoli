@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { serializeRdl } from '@rangoli/engine';
-import { Canvas } from './Canvas';
+import { Canvas, PageBar } from './Canvas';
 import { duplicateScript, indent, stripIds } from './helpers';
 import { Inspector } from './Inspector';
 import { NotesPanel } from './NotesPanel';
@@ -13,10 +13,13 @@ import { SceneStudio } from './SceneStudio';
 import { RunOverlay, exportHtml } from './Run';
 import { SelectionTools, groupSelection, copyStyle, pasteStyle } from './Multi';
 import { themesOf } from '@rangoli/engine';
-import { DrawTools, TOOL_KEYS } from './Draw';
+import { DrawTools } from './Draw';
+import { actionFor, canvasHasFocus, cycleRegion, isTypingTarget, shortcutLabel, useKeymap, type Action } from './keymap';
+import { liveCanvas } from './retained';
+import { moveFrames } from './Canvas';
 import { ImageStudio } from './ImageStudio';
 import { ReviewPanel } from './ReviewPanel';
-import { setSkin, api, canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId, setTool, openAddPanel, setState } from './store';
+import { setSkin, api, canEdit, connect, getState, rdl, redo, requestFit, select, setMode, setRightTab, setView, setZoom, undo, useEditor, myClientId, setTool, openAddPanel, setState, activePageId, type Tool } from './store';
 
 const INSERTS: { key: string; label: string; rdl: string }[] = [
   { key: 'frame', label: 'Frame', rdl: 'Frame col gap3 p4 w320 fill:surface stroke:border r3' },
@@ -36,37 +39,56 @@ async function insert(line: string) {
   if (res?.created[0]) select([res.created[0]]);
 }
 
-function isTyping(e: Event) {
-  const t = e.target as HTMLElement | null;
-  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-}
+/** Typing in a field, or editing text in place on the canvas (inside a frame's shadow root). */
+const isTyping = isTypingTarget;
+
+const TOOL_OF: Partial<Record<Action, Tool>> = { 'tool.select': 'select', 'tool.frame': 'frame', 'tool.rect': 'rect', 'tool.ellipse': 'ellipse', 'tool.line': 'line', 'tool.pen': 'pen', 'tool.text': 'text' };
 
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // F6 / Shift+F6 cycle the regions: tool bar, layers, canvas, inspector (works from anywhere)
+      if (e.key === 'F6' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); cycleRegion(e.shiftKey); return; }
       if (isTyping(e)) return;
       const s = getState();
       const doc = s.doc;
       const mod = e.ctrlKey || e.metaKey;
       const sel = s.selection;
       const one = sel.length === 1 ? doc?.findNode(sel[0]!)?.node : undefined;
+      const page = doc?.page(activePageId());
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); void (e.shiftKey ? redo() : undo()); return; }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); void redo(); return; }
       if (mod && e.key === '0') { e.preventDefault(); setZoom(1); return; }
-      if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); requestFit(); return; }
+      if (e.shiftKey && !mod && e.code === 'Digit1' && canvasHasFocus()) { e.preventDefault(); requestFit(); return; }
       if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(s.zoom * 1.2); return; }
       if (mod && e.key === '-') { e.preventDefault(); setZoom(s.zoom / 1.2); return; }
-      if (!doc || s.view !== 'design') return;
-      if (!canEdit()) {
-        // viewers/reviewers: navigation only
-        if (e.key === 'Escape') select([]);
+      if (!doc || !page || s.view !== 'design') return;
+      // everything below without a modifier is a single-key shortcut: only while the canvas has focus (WCAG 2.1.4)
+      const onCanvas = canvasHasFocus();
+      if (!mod && !onCanvas) return;
+      // keyboard alternative to the marquee: select every frame, or every layer beside the selection
+      if (mod && !e.altKey && e.key.toLowerCase() === 'a' && onCanvas) {
+        e.preventDefault();
+        const parent = one?.parent ? doc.node(one.parent) : undefined;
+        select(parent ? [...(parent.children ?? [])] : [...page.children]);
         return;
       }
-      if (!mod && !e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); openAddPanel(); return; }
+      const action = actionFor(e);
+      if (action === 'shortcuts') { e.preventDefault(); window.dispatchEvent(new Event('rangoli:shortcuts')); return; }
+      if (e.key === 'Escape') { select([]); return; }
+      // arrows with nothing selected pan the view (the non-drag path for panning)
+      if (!mod && !e.altKey && e.key.startsWith('Arrow') && !sel.length) {
+        e.preventDefault();
+        const d = e.shiftKey ? 240 : 48;
+        window.dispatchEvent(new CustomEvent('rangoli:pan', { detail: { dx: e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, dy: e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0 } }));
+        return;
+      }
+      if (!canEdit()) return; // viewers and reviewers: navigation only
+      if (action === 'add') { e.preventDefault(); openAddPanel(); return; }
       if (mod && e.key.toLowerCase() === 'g' && sel.length) { e.preventDefault(); void groupSelection(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'c' && one) { e.preventDefault(); copyStyle(one); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'v' && sel.length) { e.preventDefault(); void pasteStyle(sel); return; }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
+      if (action === 'delete' && sel.length) {
         e.preventDefault();
         void rdl(sel.map((id) => `delete #${id}`).join('\n'), `delete ${sel.length}`).then((r) => r && select([]));
         return;
@@ -76,25 +98,30 @@ function useShortcuts() {
         void rdl(duplicateScript(doc, one.id), 'duplicate').then((r) => r?.created[0] && select([r.created[0]]));
         return;
       }
-      if (e.key === 'Escape') { select([]); return; }
-      if (!mod && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) { setTool(TOOL_KEYS[e.key.toLowerCase()]!); return; }
-      // arrow keys nudge free-floating layers (Shift = 10px)
-      if (!mod && !e.altKey && e.key.startsWith('Arrow') && one?.position && (one.absolute || (one.parent && doc.node(one.parent).layout?.mode === 'none'))) {
-        e.preventDefault();
+      if (action && TOOL_OF[action]) { setTool(TOOL_OF[action]!); return; }
+      // arrow keys move top-level frames (the non-drag path for placing frames) and free-floating layers
+      if (!mod && !e.altKey && e.key.startsWith('Arrow') && sel.length) {
         const d = e.shiftKey ? 10 : 1;
         const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
-        void rdl(`set #${one.id} at:${one.position.x + dx},${one.position.y + dy}`, 'nudge');
+        const frames = sel.filter((id) => page.nodes[id] && !page.nodes[id]!.parent);
+        const c = liveCanvas();
+        if (frames.length === sel.length && c) { e.preventDefault(); void moveFrames(c, frames, dx, dy); return; }
+        if (one?.position && (one.absolute || (one.parent && doc.node(one.parent).layout?.mode === 'none'))) {
+          e.preventDefault();
+          void rdl(`set #${one.id} at:${one.position.x + dx},${one.position.y + dy}`, 'nudge');
+        }
         return;
       }
-      if (e.key === 'Enter' && one) {
+      if (action === 'edit' && one && !e.shiftKey) {
         e.preventDefault();
-        if (e.shiftKey && one.parent) select([one.parent]);
-        else if (!e.shiftKey && one.children?.[0]) select([one.children[0]]);
+        if (one.type === 'text') window.dispatchEvent(new CustomEvent('rangoli:edit-text', { detail: one.id }));
+        else if (one.children?.[0]) select([one.children[0]]);
         return;
       }
+      if (e.key === 'Enter' && e.shiftKey && one?.parent) { e.preventDefault(); select([one.parent]); return; }
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && one) {
         e.preventDefault();
-        const sib = one.parent ? doc.node(one.parent).children ?? [] : doc.page().children;
+        const sib = one.parent ? doc.node(one.parent).children ?? [] : page.children;
         const i = sib.indexOf(one.id);
         const other = sib[e.key === 'ArrowUp' ? i - 1 : i + 1];
         if (other) void rdl(`move #${one.id} ${e.key === 'ArrowUp' ? 'before' : 'after'} #${other}`, 'reorder');
@@ -149,10 +176,11 @@ function Toolbar() {
   const presence = useEditor((s) => s.presence);
   const others = presence.filter((p) => p.clientId !== myClientId);
   const view = useEditor((s) => s.view);
-  const editable = useEditor((s) => s.can.includes('design.edit')) && view === 'design';
+  const editable = useEditor((s) => s.can.includes('design.edit') && !s.activePage) && view === 'design';
+  useKeymap();
 
   return (
-    <header className="toolbar">
+    <header className="toolbar" data-region="toolbar" aria-label="Tool bar" tabIndex={-1}>
       <div className="tb-left">
         {hosted ? <a className="btn" href={`/p/${hosted.projectId}/${hosted.stage}`}>← Journey</a> : <span className="brand" aria-hidden>◈</span>}
         <span className="doc-name">{name}</span>
@@ -165,7 +193,7 @@ function Toolbar() {
           <button role="radio" aria-checked={view === '3d'} className="seg-item" onClick={() => setView('3d')}>3D</button>
         </div>
         {editable && <AskAgent />}
-        {editable && <button className="btn" aria-pressed={leftTab === 'add'} title="Add components, patterns and 3D (A)" onClick={openAddPanel}>+ Add</button>}
+        {editable && <button className="btn" aria-pressed={leftTab === 'add'} title={`Add components, patterns and 3D${shortcutLabel('add') ? ` (${shortcutLabel('add')}, on the canvas)` : ''}`} onClick={openAddPanel}>+ Add</button>}
         {editable && <button className="btn btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => void undo()}>↶</button>}
         {editable && <button className="btn btn-icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={() => void redo()}>↷</button>}
       </div>
@@ -201,6 +229,7 @@ function Toolbar() {
             <button className="btn zoom-val" title="Reset zoom (Ctrl+0)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
             <button className="btn btn-icon" aria-label="Zoom in" onClick={() => setZoom(zoom * 1.2)}>+</button>
             <button className="btn" title="Zoom to fit (Shift+1)" onClick={requestFit}>Fit</button>
+            <button className="btn" title={`Keyboard shortcuts${shortcutLabel('shortcuts') ? ` (${shortcutLabel('shortcuts')})` : ''}`} onClick={() => window.dispatchEvent(new Event('rangoli:shortcuts'))}>Keys</button>
           </div>
         )}
         <span className={`conn ${connected ? 'is-on' : ''}`} title={connected ? 'Live: synced with server and agents' : 'Disconnected — retrying'} role="status" aria-label={connected ? 'Connected' : 'Disconnected'} />
@@ -233,7 +262,7 @@ export function App() {
   return (
     <div className="app">
       <Toolbar />
-      <aside className="left">
+      <aside className="left" data-region="layers" aria-label="Layers" tabIndex={-1}>
         <div className="tabs tabs-top" role="tablist">
           <button role="tab" aria-selected={leftTab === 'layers'} className="tab" onClick={() => setState({ leftTab: 'layers' })}>Layers</button>
           <button role="tab" aria-selected={leftTab === 'add'} className="tab" onClick={openAddPanel}>Add</button>
@@ -246,9 +275,9 @@ export function App() {
           </>
         )}
       </aside>
-      <main className="center"><Canvas /><DrawTools /><SelectionTools /></main>
+      <main className="center"><Canvas /><DrawTools /><SelectionTools /><PageBar /></main>
       <RunOverlay />
-      <aside className="right">
+      <aside className="right" data-region="inspector" aria-label="Inspector" tabIndex={-1}>
         <div className="tabs tabs-top" role="tablist">
           <button role="tab" aria-selected={tab === 'inspect'} className="tab" onClick={() => setTab('inspect')}>Inspect</button>
           <button role="tab" aria-selected={tab === 'review'} className="tab" onClick={() => setTab('review')}>

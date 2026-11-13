@@ -351,6 +351,7 @@ export function Journey({ me, projectId, stage: requested }: { me: Me; projectId
     <div className="a-page">
       <TopBar me={me} org={org} trail={<span className="a-crumb-now a-truncate">{j.project.name}</span>}>
         <span className="a-role" title="Your role in this project">{j.role.replace('_', ' ')}</span>
+        <Link className="a-btn" href={`/p/${j.project.id}/review`}>Review and release</Link>
         <Link className="a-btn" href={`/p/${j.project.id}/design`}>Open canvas</Link>
       </TopBar>
       <Rail j={j} viewing={viewing.id} />

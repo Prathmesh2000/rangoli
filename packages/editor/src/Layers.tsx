@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { canEdit, rdl, select, setHover, useEditor, getState } from './store';
+import { canEdit, rdl, select, setHover, useEditor, getState, activePageId } from './store';
 
 /** Drag a layer row: upper/lower edge = before/after, middle of a container row = inside it. */
 function startRowDrag(e: React.PointerEvent, id: string) {
@@ -35,8 +35,9 @@ import { TYPE_GLYPH } from './helpers';
 export function Layers() {
   const version = useEditor((s) => s.version);
   const doc = useEditor((s) => s.doc);
+  useEditor((s) => s.activePage);
   if (!doc) return <div className="panel-empty">Loading…</div>;
-  const roots = doc.page().children;
+  const roots = doc.page(activePageId()).children;
   return (
     <div className="layers" role="tree" aria-label="Layers" data-v={version}>
       {roots.length === 0 && <div className="panel-empty">No layers yet</div>}

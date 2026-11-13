@@ -28,7 +28,6 @@ export interface SignedClaim {
   screens: [string, string][];
   /** [file, sha256], sorted */
   assets: [string, string][];
-  createdBy: string;
 }
 
 export interface Signer {

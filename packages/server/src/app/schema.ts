@@ -15,6 +15,7 @@ import { MIGRATION_007 } from './migration-007.js';
 import { MIGRATION_009 } from './migration-009.js';
 import { MIGRATION_008 } from './migration-008.js';
 import { MIGRATION_010 } from './migration-010.js';
+import { MIGRATION_011 } from './migration-011.js';
 
 export const MIGRATIONS: { id: string; sql: string }[] = [
   {
@@ -484,4 +485,5 @@ CREATE POLICY audit_add ON audit_log FOR INSERT TO rangoli_app WITH CHECK (actor
   MIGRATION_009,
   MIGRATION_008,
   MIGRATION_010,
+  MIGRATION_011,
 ];

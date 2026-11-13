@@ -7,8 +7,8 @@ import { indent } from './helpers';
  * an insertion line; free frames, or holding Ctrl, place the item exactly where it is dropped.
  */
 
-let shadow: ShadowRoot | null = null;
-export const setDropRoot = (s: ShadowRoot | null) => { shadow = s; };
+import { gapsAround, snapMove, type Rect } from '@rangoli/engine';
+import { canvasElement, canvasElementsAt } from './retained';
 
 export interface Drop {
   parent: string | null;
@@ -28,10 +28,10 @@ const isInside = (doc: RangoliDocument, id: string, ancestor: string) => {
 
 export function dropAt(cx: number, cy: number, forceFree: boolean, exclude?: string): (Drop & { line?: DOMRect; outline?: DOMRect; vertical?: boolean }) | null {
   const doc = getState().doc;
-  if (!shadow || !doc) return null;
+  if (!doc) return null;
   const zoom = getState().zoom;
-  const els = [...shadow.querySelectorAll<HTMLElement>('[data-rid]')].reverse();
-  for (const el of els) {
+  // only frames under the point, each in its own shadow root, topmost layer first
+  for (const el of canvasElementsAt(cx, cy)) {
     const r = el.getBoundingClientRect();
     if (!r.width || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
     const node = doc.findNode(el.getAttribute('data-rid')!)?.node;
@@ -39,7 +39,7 @@ export function dropAt(cx: number, cy: number, forceFree: boolean, exclude?: str
     const x = Math.round((cx - r.left) / zoom), y = Math.round((cy - r.top) / zoom);
     const mode = node!.layout?.mode ?? 'col';
     if (forceFree || mode === 'none') return { parent: node!.id, before: null, index: 0, free: true, x, y, outline: r };
-    const kids = (node!.children ?? []).filter((c) => c !== exclude).map((c) => ({ id: c, n: doc.findNode(c)?.node, el: shadow!.querySelector<HTMLElement>(`[data-rid="${c}"]`) })).filter((k) => k.el && !k.n?.absolute && !k.n?.hidden);
+    const kids = (node!.children ?? []).filter((c) => c !== exclude).map((c) => ({ id: c, n: doc.findNode(c)?.node, el: canvasElement(c) })).filter((k) => k.el && !k.n?.absolute && !k.n?.hidden);
     const horizontal = mode === 'row';
     let before: string | null = null, index = kids.length;
     if (mode === 'grid') {
@@ -157,36 +157,45 @@ export function startLayerDrag(e: React.PointerEvent, node: RNode, el: HTMLEleme
   }, () => { el.style.opacity = '.35'; window.addEventListener('pointerup', () => { el.style.opacity = ''; }, { once: true }); });
 }
 
-/** Snap guides for a moving free-floating layer: parent edges/centre and sibling edges/centres. */
+/**
+ * Snapping, smart guides and distances for a moving free-floating layer: its parent's edges and centre and its
+ * siblings' edges and centres, in screen pixels. Gaps to the nearest sibling on each side show as numbers in
+ * design pixels (canvas-layout.ts snapMove, shared with frame moves).
+ */
 export function snapper(el: HTMLElement, node: RNode, doc: RangoliDocument) {
   const parentEl = el.parentElement!;
   const pr = parentEl.getBoundingClientRect();
   const r0 = el.getBoundingClientRect();
-  const xs: number[] = [pr.left, pr.left + pr.width / 2, pr.right];
-  const ys: number[] = [pr.top, pr.top + pr.height / 2, pr.bottom];
+  const zoom = getState().zoom || 1;
+  const rect = (b: DOMRect): Rect => ({ x: b.left, y: b.top, w: b.width, h: b.height });
+  const siblings: Rect[] = [];
   for (const c of (node.parent ? doc.node(node.parent).children ?? [] : [])) {
-    if (c === node.id || !shadow) continue;
-    const b = shadow.querySelector<HTMLElement>(`[data-rid="${c}"]`)?.getBoundingClientRect();
-    if (!b?.width) continue;
-    xs.push(b.left, b.left + b.width / 2, b.right);
-    ys.push(b.top, b.top + b.height / 2, b.bottom);
+    if (c === node.id) continue;
+    const b = canvasElement(c)?.getBoundingClientRect();
+    if (b?.width) siblings.push(rect(b));
   }
-  const vg = document.createElement('div'), hg = document.createElement('div');
-  vg.className = hg.className = 'dnd-guide';
-  document.body.append(vg, hg);
-  const snapAxis = (d: number, start: number, size: number, targets: number[]) => {
-    for (const off of [0, size / 2, size]) for (const t of targets) { const delta = t - (start + d + off); if (Math.abs(delta) <= 5) return { d: d + delta, at: t }; }
-    return { d };
-  };
+  const targets = [rect(pr), ...siblings];
+  const layer = document.createElement('div');
+  layer.className = 'dnd-measure';
+  document.body.append(layer);
   return {
     apply(dx: number, dy: number) {
-      const a = snapAxis(dx, r0.left, r0.width, xs), b = snapAxis(dy, r0.top, r0.height, ys);
-      vg.style.display = a.at === undefined ? 'none' : 'block';
-      hg.style.display = b.at === undefined ? 'none' : 'block';
-      if (a.at !== undefined) Object.assign(vg.style, { left: `${a.at}px`, top: `${pr.top}px`, width: '1px', height: `${pr.height}px` });
-      if (b.at !== undefined) Object.assign(hg.style, { left: `${pr.left}px`, top: `${b.at}px`, width: `${pr.width}px`, height: '1px' });
-      return { dx: a.d, dy: b.d };
+      const s = snapMove(rect(r0), dx, dy, targets, 5);
+      const moved = { x: r0.left + s.dx, y: r0.top + s.dy, w: r0.width, h: r0.height };
+      const parts: string[] = [];
+      for (const g of s.guides) {
+        parts.push(g.axis === 'x'
+          ? `<i class="dnd-guide" style="display:block;left:${g.at}px;top:${g.from}px;width:1px;height:${g.to - g.from}px"></i>`
+          : `<i class="dnd-guide" style="display:block;left:${g.from}px;top:${g.at}px;width:${g.to - g.from}px;height:1px"></i>`);
+      }
+      for (const g of gapsAround(moved, siblings)) {
+        const n = Math.round(g.size / zoom);
+        if (g.axis === 'x') parts.push(`<i class="dnd-gap" style="left:${g.from}px;top:${g.at}px;width:${g.size}px;height:1px"></i><b class="dnd-gap-tag" style="left:${(g.from + g.to) / 2}px;top:${g.at}px">${n}</b>`);
+        else parts.push(`<i class="dnd-gap" style="left:${g.at}px;top:${g.from}px;width:1px;height:${g.size}px"></i><b class="dnd-gap-tag" style="left:${g.at}px;top:${(g.from + g.to) / 2}px">${n}</b>`);
+      }
+      layer.innerHTML = parts.join('');
+      return { dx: s.dx, dy: s.dy };
     },
-    done() { vg.remove(); hg.remove(); },
+    done() { layer.remove(); },
   };
 }

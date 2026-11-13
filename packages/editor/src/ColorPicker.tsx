@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { canvasElement } from './retained';
 import { createPortal } from 'react-dom';
 import { contrastRatio, generateRamp, hexToRgb, oklchToHex, rgbToHex, rgbToOklch, TokenResolver } from '@rangoli/engine';
 import type { Opt } from './helpers';
@@ -79,7 +80,7 @@ type Tab = 'custom' | 'tokens' | 'library' | 'mine';
 /** Paint the selected layer directly while dragging; the one real edit happens on release. */
 function previewOnCanvas(prop: string | undefined, css: string) {
   const id = getState().selection[0];
-  const el = id ? document.querySelector('.canvas-zoom > div')?.shadowRoot?.querySelector<HTMLElement>(`[data-rid="${id}"]`) : null;
+  const el = id ? canvasElement(id) : null;
   if (!prop || !el) return;
   if (prop === 'outline') { el.style.outline = `2px solid ${css}`; el.style.outlineOffset = '-2px'; } // the border preview
   else el.style.setProperty(prop, css);

@@ -9,6 +9,8 @@ import type { AppCore } from '../http/context.js';
 import { notFound } from '../http/errors.js';
 import { tokenActor } from '../db.js';
 import { actor, DbStore } from '../store.js';
+import { agentRoutes } from './connect.js';
+import { DbAgentPlatform } from './platform-db.js';
 
 export interface OpenDesign {
   session: Session;
@@ -48,6 +50,11 @@ export function createDesigns(core: AppCore, mcpOptions: McpOptionsFor): Designs
           evict(projectId);
         }, blobs);
         const session = await actor.run(userId, () => Session.fromStore(store, hydrateDocument(row.data)));
+        // notes, tasks, leases and runs live in the database, under the same identities as the design
+        const platform = new DbAgentPlatform(db, projectId, orgId);
+        session.usePlatform(platform);
+        // who made each top-level frame: the write rules let an agent edit only its person's own
+        session.on('change', (e) => void platform.recordFrameOwners(e));
         // A finished request for a planned screen becomes that screen's frame, written as the agent's owner and
         // through the agent's token, so RLS judges it exactly as it judges the agent. The identity is taken
         // while the tool call that finished the request is still running; without one, the link is refused out
@@ -69,7 +76,12 @@ export function createDesigns(core: AppCore, mcpOptions: McpOptionsFor): Designs
             })
             .catch((err: unknown) => logger.error('could not link the frame', { err, projectId }));
         });
-        const routes = createDesignRoutes(session, { hosted: true, mcpOptions: (access) => mcpOptions(projectId, access, session) });
+        const routes = createDesignRoutes(session, {
+          hosted: true,
+          mcpOptions: (access) => mcpOptions(projectId, access, session),
+          connections: () => platform.connections(),
+          extraRoutes: (req, res, url, access, json) => agentRoutes({ req, url, access, json, projectId, platform, core }),
+        });
         return { session, routes, lastUsed: Date.now() };
       })();
       entry.catch(() => open.delete(projectId));

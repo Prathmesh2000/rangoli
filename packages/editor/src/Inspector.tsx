@@ -7,6 +7,7 @@ import { MotionTab } from './MotionTab';
 import { ProtoTab } from './ProtoTab';
 import { CodeTab } from './Run';
 import { MultiPanel } from './Multi';
+import { FramePanel } from './FramePanel';
 
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
@@ -34,6 +35,7 @@ export function Inspector() {
           </button>
         ))}
       </div>
+      {tab === 'design' && !node.parent && <FramePanel node={node} />}
       {tab === 'design' && <DesignTab node={node} />}
       {tab === 'motion' && <MotionTab node={node} />}
       {tab === 'proto' && <ProtoTab node={node} />}

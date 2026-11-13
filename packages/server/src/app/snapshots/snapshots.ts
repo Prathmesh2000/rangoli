@@ -157,7 +157,7 @@ export function hashDesign(data: DocumentData, frames: readonly ScreenFrameLink[
   return { hashes, screens, assets: [...assets] };
 }
 
-export const claimOf = (row: Pick<SnapshotRow, 'id' | 'project_id' | 'content_hash' | 'library_hash' | 'canon_version' | 'engine_version' | 'created_by'>, screens: { key: string; hash: string }[], assets: { file: string; sha256: string }[]): SignedClaim => ({
+export const claimOf = (row: Pick<SnapshotRow, 'id' | 'project_id' | 'content_hash' | 'library_hash' | 'canon_version' | 'engine_version'>, screens: { key: string; hash: string }[], assets: { file: string; sha256: string }[]): SignedClaim => ({
   snapshot: row.id,
   project: row.project_id,
   contentHash: row.content_hash,
@@ -166,7 +166,6 @@ export const claimOf = (row: Pick<SnapshotRow, 'id' | 'project_id' | 'content_ha
   engineVersion: row.engine_version,
   screens: screens.map((s) => [s.key, s.hash]),
   assets: assets.map((a) => [a.file, a.sha256]),
-  createdBy: row.created_by ?? '',
 });
 
 export function createSnapshots(designs: Designs, signer: Signer, blobs?: BlobStore) {
@@ -221,7 +220,7 @@ export function createSnapshots(designs: Designs, signer: Signer, blobs?: BlobSt
    */
   const insert = async (q: Q, user: User, j: Journey, cap: Captured, opts: { kind: SnapshotKind; name: string }): Promise<SnapshotRow> => {
     const id = randomUUID();
-    const base = { id, project_id: j.project.id, content_hash: cap.hashes.contentHash, library_hash: cap.hashes.libraryHash, canon_version: cap.hashes.canonVersion, engine_version: ENGINE_VERSION, created_by: user.id };
+    const base = { id, project_id: j.project.id, content_hash: cap.hashes.contentHash, library_hash: cap.hashes.libraryHash, canon_version: cap.hashes.canonVersion, engine_version: ENGINE_VERSION };
     const { signature, keyId } = signer.sign(claimOf(base, cap.screens, cap.assets));
     const [row] = await q<SnapshotRow>(
       `INSERT INTO snapshots (id, project_id, org_id, cycle, stage, kind, name, seq, data, items, annotations, frames, content_hash, library_hash, canon_version, engine_version, signature, signing_key, created_by)
